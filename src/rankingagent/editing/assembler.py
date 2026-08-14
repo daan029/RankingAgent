@@ -6,11 +6,11 @@ from pathlib import Path
 from rankingagent.editing.clip_processor import normalize_clip, overlay_frame_on_clip
 from rankingagent.editing.overlay import render_overlay_frame
 
-CLIP_DURATION_SECONDS = 3.5
+CLIP_DURATION_SECONDS = 7.0
 
 
 def render_video(
-    theme_label: str,
+    title_text: str,
     ranked_clips: list[dict],
     reactions: dict[str, str],
     work_dir: Path,
@@ -33,7 +33,7 @@ def render_video(
         normalize_clip(Path(clip["local_path"]), normalized, duration=CLIP_DURATION_SECONDS)
 
         overlay_img = work_dir / f"overlay_{idx}.png"
-        frame = render_overlay_frame(theme_label, ranked_clips, revealed_count=idx + 1)
+        frame = render_overlay_frame(title_text, ranked_clips, revealed_count=idx + 1)
         frame.save(overlay_img)
 
         segment = work_dir / f"segment_{idx}.mp4"

@@ -68,6 +68,11 @@ def main() -> None:
         required=True,
         help='JSON object mapping clip id -> short reaction text, e.g. \'{"reddit_abc123": "Aaaah\\ud83d\\udc80"}\'',
     )
+    render_parser.add_argument(
+        "--title-text",
+        default=None,
+        help="On-screen burned-in title text (after 'Ranking Best '); defaults to the theme's on_screen_label",
+    )
 
     upload_parser = subparsers.add_parser("upload", help="Upload a rendered video to YouTube")
     upload_parser.add_argument("--theme", required=True, help="Theme name from config/themes.yaml")
@@ -111,7 +116,7 @@ def main() -> None:
         print(json.dumps(ranked, indent=2, default=str))
     elif args.command == "render":
         reactions = json.loads(args.reactions)
-        output_path = render_video_for_theme(args.theme, reactions)
+        output_path = render_video_for_theme(args.theme, reactions, title_text=args.title_text)
         print(str(output_path))
     elif args.command == "upload":
         tags = [t.strip() for t in args.tags.split(",") if t.strip()]

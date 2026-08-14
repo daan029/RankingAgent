@@ -87,22 +87,23 @@ Keep it punchy, not a description of what happens. Build a JSON object
 mapping clip `id` -> reaction text, e.g.:
 `{"reddit_abc123": "Ouch😬", "reddit_def456": "No way😱"}`
 
-## 6. Render the video
-
-```
-python -m rankingagent.cli render --theme <theme> --reactions '<json from step 5>'
-```
-
-Prints the path to the rendered mp4. If ffmpeg isn't on PATH or fails,
-report the error rather than retrying blindly.
-
-## 7. Write the title and description
+## 6. Write the on-screen title, YouTube title, and description
 
 Check `python -m rankingagent.cli history --theme <theme>` for previously
 used titles so you don't repeat one. Based on the actual 5 selected clips
-(not a generic template), come up with 3-5 candidate YouTube titles, then
-pick the best one yourself — favor a clear hook, no misleading claims, under
-100 characters, include `#Shorts`.
+(not a generic template), come up with 3-5 candidate titles, then pick the
+best one yourself.
+
+You're writing **two** related but distinct pieces of text:
+
+- **On-screen title** (burned into the video, after "Ranking Best "): a few
+  words with real context about tonight's specific clips — not just the bare
+  theme name ("Fails"). E.g. "Craziest Fails Of The Week" or "Fails You Won't
+  Believe". Keep it short enough to fit one line at the top of a vertical
+  video (roughly 3-6 words after "Ranking Best ").
+- **YouTube title** (video metadata): favor a clear hook, no misleading
+  claims, under 100 characters, include `#Shorts`. Can be longer/more
+  specific than the on-screen title.
 
 The description MUST credit each of the 5 clips' original creators by their
 Reddit username (from the `creator` field in step 4's output) — this is a
@@ -118,10 +119,19 @@ If you're the creator of a clip and want it removed, contact us at [email].
 #Shorts #<theme-related-tags>
 ```
 
+## 7. Render the video
+
+```
+python -m rankingagent.cli render --theme <theme> --reactions '<json from step 5>' --title-text "<on-screen title from step 6>"
+```
+
+Prints the path to the rendered mp4. If ffmpeg isn't on PATH or fails,
+report the error rather than retrying blindly.
+
 ## 8. Upload
 
 ```
-python -m rankingagent.cli upload --theme <theme> --video <path from step 6> --title "<title>" --description "<description>" --tags "<comma,separated,tags>"
+python -m rankingagent.cli upload --theme <theme> --video <path from step 7> --title "<YouTube title from step 6>" --description "<description from step 6>" --tags "<comma,separated,tags>"
 ```
 
 Don't pass `--privacy` unless the user has explicitly told you to go public —

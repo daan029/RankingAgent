@@ -176,12 +176,13 @@ def select_top_clips(theme_name: str) -> list[dict]:
     return ranked
 
 
-def render_video_for_theme(theme_name: str, reactions: dict[str, str]) -> Path:
+def render_video_for_theme(theme_name: str, reactions: dict[str, str], title_text: str | None = None) -> Path:
     init_db()
     themes = load_themes()
     if theme_name not in themes:
         raise ValueError(f"Unknown theme '{theme_name}'. Available: {', '.join(themes)}")
     theme = themes[theme_name]
+    title_text = title_text or theme.on_screen_label
 
     with get_connection() as conn:
         rows = get_selected_clips(conn, theme.name)
@@ -198,7 +199,7 @@ def render_video_for_theme(theme_name: str, reactions: dict[str, str]) -> Path:
     work_dir = RENDERS_DIR / theme.name / f"work_{timestamp}"
     output_path = RENDERS_DIR / theme.name / f"{timestamp}.mp4"
 
-    render_video(theme.on_screen_label, ranked_clips, reactions, work_dir, output_path)
+    render_video(title_text, ranked_clips, reactions, work_dir, output_path)
     logger.info("Rendered video for theme '%s' at %s", theme.name, output_path)
 
     _cleanup_after_render(theme.name, work_dir)
