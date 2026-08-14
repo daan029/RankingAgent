@@ -41,6 +41,12 @@ class Settings:
     youtube_privacy_status: str = field(
         default_factory=lambda: os.environ.get("YOUTUBE_PRIVACY_STATUS", "unlisted")
     )
+    # Workaround for dev machines behind an SSL-inspecting corporate proxy,
+    # where Python's cert verification fails even though the underlying
+    # request is fine. Leave false on the real deployment (home) laptop.
+    ytdlp_no_check_certificate: bool = field(
+        default_factory=lambda: os.environ.get("YTDLP_NO_CHECK_CERTIFICATE", "false").lower() == "true"
+    )
 
 
 def load_settings() -> Settings:

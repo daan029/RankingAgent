@@ -8,6 +8,7 @@ from pathlib import Path
 
 from rankingagent.pipeline import (
     discover_and_download,
+    discover_from_urls,
     get_theme_history,
     render_video_for_theme,
     select_top_clips,
@@ -23,6 +24,15 @@ def main() -> None:
         "discover", help="Discover and download clips for a theme from Reddit"
     )
     discover_parser.add_argument("--theme", required=True, help="Theme name from config/themes.yaml")
+
+    discover_manual_parser = subparsers.add_parser(
+        "discover-manual",
+        help="Fallback while Reddit API access is pending: fetch metadata/download from a user-curated list of post URLs",
+    )
+    discover_manual_parser.add_argument("--theme", required=True, help="Theme name from config/themes.yaml")
+    discover_manual_parser.add_argument(
+        "--urls-file", required=True, help="Text file with one Reddit post URL per line"
+    )
 
     select_parser = subparsers.add_parser(
         "select", help="Rank and select the top clips for a theme; prints JSON"
@@ -66,6 +76,9 @@ def main() -> None:
 
     if args.command == "discover":
         discover_and_download(args.theme)
+    elif args.command == "discover-manual":
+        urls = Path(args.urls_file).read_text(encoding="utf-8").splitlines()
+        discover_from_urls(args.theme, urls)
     elif args.command == "select":
         ranked = select_top_clips(args.theme)
         print(json.dumps(ranked, indent=2, default=str))
