@@ -1,0 +1,37 @@
+themes:
+  - name: fails
+    on_screen_label: "Fails"
+    subreddits:
+      - Fails
+      - Whatcouldgowrong
+      - Idiotsincars
+    min_score: 1000
+    clip_count: 5
+    title_template: "TOP 5 EPIC FAILS 😂 #{episode} | #Shorts"
+    description_template: >
+      The 5 most epic fails this week! Clips via Reddit, all credit to the
+      original creators (see below).
+
+  - name: karen_moments
+    on_screen_label: "Karen Moments"
+    subreddits:
+      - PublicFreakout
+      - instantkarma
+    min_score: 1500
+    clip_count: 5
+    title_template: "TOP 5 KAREN MOMENTS 😱 #{episode} | #Shorts"
+    description_template: >
+      The 5 wildest Karen moments this week! Clips via Reddit, all credit to
+      the original creators (see below).
+
+  - name: worst_tackles
+    on_screen_label: "Worst Tackles"
+    subreddits:
+      - footballhighlights
+      - soccer
+    min_score: 800
+    clip_count: 5
+    title_template: "TOP 5 WORST TACKLES 🟥 #{episode} | #Shorts"
+    description_template: >
+      The 5 worst tackles this week! Clips via Reddit, all credit to the
+      original creators (see below).
