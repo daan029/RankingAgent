@@ -51,7 +51,14 @@ def render_video(
         "ffmpeg", "-y",
         "-f", "concat", "-safe", "0",
         "-i", str(concat_list),
-        "-c", "copy",
+        # Re-encode rather than stream-copy: segments are each encoded in a
+        # separate ffmpeg invocation, and even with matched settings minor
+        # inconsistencies (container timestamps, etc.) can produce a
+        # concat-copied file some players refuse to open. Re-encoding here
+        # guarantees one consistent, clean output stream.
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-ac", "2",
+        "-movflags", "+faststart",
         str(output_path),
     ]
     subprocess.run(cmd, check=True, capture_output=True)

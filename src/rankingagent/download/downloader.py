@@ -14,7 +14,11 @@ def download_clip(source_url: str, clip_id: str, dest_dir: Path, no_check_certif
 
     ydl_opts = {
         "outtmpl": output_template,
-        "format": "mp4/bestvideo+bestaudio/best",
+        # Reddit serves a video-only "fallback" stream tagged ext=mp4
+        # alongside separate DASH video/audio streams — a naive "mp4/..."
+        # selector matches that muxed-looking-but-silent fallback first and
+        # yt-dlp never tries to merge audio in. Require bestaudio explicitly.
+        "format": "bestvideo+bestaudio/best",
         "merge_output_format": "mp4",
         "quiet": True,
         "no_warnings": True,

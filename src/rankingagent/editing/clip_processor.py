@@ -20,8 +20,9 @@ def normalize_clip(input_path: Path, output_path: Path, duration: float = 3.5) -
         "-i", str(input_path),
         "-t", str(duration),
         "-vf", vf,
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-        "-c:a", "aac", "-b:a", "128k", "-ar", "44100",
+        "-r", "30",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-ac", "2",
         "-movflags", "+faststart",
         str(output_path),
     ]
@@ -38,8 +39,9 @@ def overlay_frame_on_clip(clip_path: Path, overlay_png: Path, output_path: Path)
         "-filter_complex", "[0:v][1:v]overlay=0:0:format=auto[outv]",
         "-map", "[outv]",
         "-map", "0:a?",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-        "-c:a", "aac", "-b:a", "128k",
+        "-r", "30",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-ac", "2",
         str(output_path),
     ]
     subprocess.run(cmd, check=True, capture_output=True)
