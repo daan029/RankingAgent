@@ -8,6 +8,7 @@ from rankingagent.config import DOWNLOADS_DIR, RENDERS_DIR, load_settings, load_
 from rankingagent.db.store import (
     get_clips_by_status,
     get_selected_clips,
+    get_video_history,
     init_db,
     mark_clip_downloaded,
     mark_clip_status,
@@ -140,3 +141,19 @@ def upload_rendered_video(
 
     logger.info("Published video for theme '%s': https://youtube.com/watch?v=%s", theme.name, video_id)
     return video_id
+
+
+def get_theme_history(theme_name: str) -> list[dict]:
+    """Previously published videos for a theme (title, youtube id, clip ids,
+    publish date) — used by the daily agent run to avoid repeating a topic
+    and to see which clips are already spent."""
+    init_db()
+    themes = load_themes()
+    if theme_name not in themes:
+        raise ValueError(f"Unknown theme '{theme_name}'. Available: {', '.join(themes)}")
+    theme = themes[theme_name]
+
+    with get_connection() as conn:
+        rows = get_video_history(conn, theme.name)
+
+    return [dict(row) for row in rows]

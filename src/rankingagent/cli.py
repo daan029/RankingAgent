@@ -8,6 +8,7 @@ from pathlib import Path
 
 from rankingagent.pipeline import (
     discover_and_download,
+    get_theme_history,
     render_video_for_theme,
     select_top_clips,
     upload_rendered_video,
@@ -49,6 +50,11 @@ def main() -> None:
         help="Defaults to YOUTUBE_PRIVACY_STATUS from .env (unlisted)",
     )
 
+    history_parser = subparsers.add_parser(
+        "history", help="Previously published videos for a theme; prints JSON"
+    )
+    history_parser.add_argument("--theme", required=True, help="Theme name from config/themes.yaml")
+
     parser.add_argument("-v", "--verbose", action="store_true")
 
     args = parser.parse_args()
@@ -78,6 +84,9 @@ def main() -> None:
             privacy_status=args.privacy,
         )
         print(f"https://youtube.com/watch?v={video_id}")
+    elif args.command == "history":
+        history = get_theme_history(args.theme)
+        print(json.dumps(history, indent=2, default=str))
 
 
 if __name__ == "__main__":
