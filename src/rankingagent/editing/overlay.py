@@ -21,23 +21,67 @@ FONT_CANDIDATES = [
     Path(r"C:\Windows\Fonts\ariblk.ttf"),
     Path(r"C:\Windows\Fonts\arialbd.ttf"),
 ]
+EMOJI_FONT_PATH = Path(r"C:\Windows\Fonts\seguiemj.ttf")
 
-_font_cache: dict[int, ImageFont.FreeTypeFont] = {}
+# Common emoji/symbol code point ranges. Impact/Arial don't have these glyphs
+# and silently draw a "tofu" box, so mixed reaction text (e.g. "Ouch\ud83d\ude2c") needs the
+# emoji characters routed to Segoe UI Emoji instead (see _draw_mixed_text).
+_EMOJI_RANGES = [
+    (0x1F300, 0x1FAFF),  # misc symbols/pictographs, emoticons, supplemental
+    (0x2600, 0x27BF),  # misc symbols, dingbats
+    (0x2190, 0x21FF),  # arrows (occasionally used decoratively)
+    (0xFE00, 0xFE0F),  # variation selectors
+]
+
+_font_cache: dict[tuple[str, int], ImageFont.FreeTypeFont] = {}
+
+
+def _is_emoji(ch: str) -> bool:
+    cp = ord(ch)
+    return any(lo <= cp <= hi for lo, hi in _EMOJI_RANGES)
 
 
 def _load_font(size: int) -> ImageFont.ImageFont:
-    if size in _font_cache:
-        return _font_cache[size]
+    key = ("text", size)
+    if key in _font_cache:
+        return _font_cache[key]
     for candidate in FONT_CANDIDATES:
         if candidate.exists():
             font = ImageFont.truetype(str(candidate), size)
-            _font_cache[size] = font
+            _font_cache[key] = font
             return font
     return ImageFont.load_default()
 
 
+def _load_emoji_font(size: int) -> ImageFont.ImageFont | None:
+    key = ("emoji", size)
+    if key in _font_cache:
+        return _font_cache[key]
+    if not EMOJI_FONT_PATH.exists():
+        return None
+    font = ImageFont.truetype(str(EMOJI_FONT_PATH), size)
+    _font_cache[key] = font
+    return font
+
+
 def _draw_outlined_text(draw: ImageDraw.ImageDraw, xy, text, font, fill, outline_width: int = 4) -> None:
     draw.text(xy, text, font=font, fill=fill, stroke_width=outline_width, stroke_fill=BLACK)
+
+
+def _draw_mixed_text(draw: ImageDraw.ImageDraw, xy, text, font, fill, outline_width: int = 4) -> None:
+    """Like _draw_outlined_text, but routes emoji characters to Segoe UI
+    Emoji (Pillow renders them as plain glyphs, not full color, since it
+    isn't a COLR-aware renderer here — still far better than the empty boxes
+    `font` draws for codepoints it doesn't have)."""
+    emoji_font = _load_emoji_font(font.size)
+    x, y = xy
+    for ch in text:
+        if _is_emoji(ch) and emoji_font is not None:
+            draw.text((x, y), ch, font=emoji_font, fill=fill, stroke_width=outline_width, stroke_fill=BLACK)
+            x += emoji_font.getlength(ch)
+        else:
+            _draw_outlined_text(draw, (x, y), ch, font, fill, outline_width=outline_width)
+            x += font.getlength(ch)
 
 
 def _draw_title_bar(draw: ImageDraw.ImageDraw, theme_label: str) -> None:
@@ -67,7 +111,7 @@ def _draw_sidebar(draw: ImageDraw.ImageDraw, ranked_clips: list[dict], revealed_
         if clip["reveal_index"] < revealed_count:
             reaction = (clip.get("reaction") or "").strip()
             if reaction:
-                _draw_outlined_text(draw, (x_number + 90, y + 8), reaction, reaction_font, WHITE, outline_width=4)
+                _draw_mixed_text(draw, (x_number + 90, y + 8), reaction, reaction_font, WHITE, outline_width=4)
 
 
 def _draw_watermark(canvas: Image.Image) -> None:

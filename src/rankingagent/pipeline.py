@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import shutil
 import time
 from pathlib import Path
 
@@ -199,7 +200,34 @@ def render_video_for_theme(theme_name: str, reactions: dict[str, str]) -> Path:
 
     render_video(theme.on_screen_label, ranked_clips, reactions, work_dir, output_path)
     logger.info("Rendered video for theme '%s' at %s", theme.name, output_path)
+
+    _cleanup_after_render(theme.name, work_dir)
+
     return output_path
+
+
+def _cleanup_after_render(theme_name: str, work_dir: Path) -> None:
+    """Once the final mp4 is assembled, no loose/raw clip files should be
+    left behind — not just the 5 that were used, but every raw clip
+    downloaded for this theme (candidates that were discovered/rejected but
+    never selected). Wipes the whole theme download dir and the intermediate
+    work dir (normalized clips, per-segment overlays, segment mp4s); only
+    the final render survives. Any clip rows still referencing those deleted
+    files are marked 'rejected' so a future `select` can't pick a clip whose
+    local file no longer exists."""
+    theme_dir = DOWNLOADS_DIR / theme_name
+    if theme_dir.exists():
+        shutil.rmtree(theme_dir)
+
+    if work_dir.exists():
+        shutil.rmtree(work_dir)
+
+    with get_connection() as conn:
+        leftover = get_clips_by_status(conn, theme_name, "downloaded")
+        for row in leftover:
+            mark_clip_status(conn, row["id"], "rejected")
+
+    logger.info("Cleaned up all raw clips for theme '%s' and work dir %s", theme_name, work_dir)
 
 
 def upload_rendered_video(
