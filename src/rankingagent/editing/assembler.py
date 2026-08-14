@@ -15,12 +15,17 @@ def render_video(
     reactions: dict[str, str],
     work_dir: Path,
     output_path: Path,
+    clip_starts: dict[str, float] | None = None,
 ) -> Path:
     """Build the full ranking video: normalize + overlay each clip in reveal
     order (sidebar accumulates revealed reactions as it goes, #1/climax
     always last), then concat the segments. `ranked_clips` rows must already
-    carry `rank` and `reveal_index` (set by ranking.scorer.select_and_rank)."""
+    carry `rank` and `reveal_index` (set by ranking.scorer.select_and_rank).
+    `clip_starts` maps clip id -> trim start offset in seconds (from
+    editing.clip_processor.extract_preview_frames review); defaults to 0 for
+    any clip not present."""
     work_dir.mkdir(parents=True, exist_ok=True)
+    clip_starts = clip_starts or {}
 
     for clip in ranked_clips:
         clip["reaction"] = reactions.get(clip["id"], "")
@@ -30,7 +35,8 @@ def render_video(
     segment_paths: list[Path] = []
     for idx, clip in enumerate(ordered):
         normalized = work_dir / f"norm_{idx}.mp4"
-        normalize_clip(Path(clip["local_path"]), normalized, duration=CLIP_DURATION_SECONDS)
+        start = clip_starts.get(clip["id"], 0.0)
+        normalize_clip(Path(clip["local_path"]), normalized, duration=CLIP_DURATION_SECONDS, start=start)
 
         overlay_img = work_dir / f"overlay_{idx}.png"
         frame = render_overlay_frame(title_text, ranked_clips, revealed_count=idx + 1)

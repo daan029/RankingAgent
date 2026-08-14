@@ -12,6 +12,7 @@ from rankingagent.pipeline import (
     discover_via_rss,
     get_theme_history,
     list_candidates,
+    preview_clip_frames,
     reject_clips,
     render_video_for_theme,
     select_top_clips,
@@ -59,6 +60,13 @@ def main() -> None:
     )
     select_parser.add_argument("--theme", required=True, help="Theme name from config/themes.yaml")
 
+    preview_frames_parser = subparsers.add_parser(
+        "preview-frames",
+        help="Sample frames across each selected clip's full duration, to pick where the fail actually is; prints JSON",
+    )
+    preview_frames_parser.add_argument("--theme", required=True, help="Theme name from config/themes.yaml")
+    preview_frames_parser.add_argument("--count", type=int, default=6, help="Frames per clip (default 6)")
+
     render_parser = subparsers.add_parser(
         "render", help="Render the final video from the currently selected clips"
     )
@@ -71,7 +79,14 @@ def main() -> None:
     render_parser.add_argument(
         "--title-text",
         default=None,
-        help="On-screen burned-in title text (after 'Ranking Best '); defaults to the theme's on_screen_label",
+        help='On-screen burned-in title text (after \'Ranking Best \'); wrap the word(s) to highlight in red with '
+             'asterisks, e.g. "Craziest *Fails* Of The Week". Defaults to the theme\'s on_screen_label (all white).',
+    )
+    render_parser.add_argument(
+        "--clip-starts",
+        default=None,
+        help='JSON object mapping clip id -> trim start offset in seconds, from reviewing `preview-frames` output, '
+             'e.g. \'{"reddit_abc123": 4.5}\'. Clips not listed start at 0.',
     )
 
     upload_parser = subparsers.add_parser("upload", help="Upload a rendered video to YouTube")
@@ -114,9 +129,15 @@ def main() -> None:
     elif args.command == "select":
         ranked = select_top_clips(args.theme)
         print(json.dumps(ranked, indent=2, default=str))
+    elif args.command == "preview-frames":
+        frames = preview_clip_frames(args.theme, count=args.count)
+        print(json.dumps(frames, indent=2))
     elif args.command == "render":
         reactions = json.loads(args.reactions)
-        output_path = render_video_for_theme(args.theme, reactions, title_text=args.title_text)
+        clip_starts = json.loads(args.clip_starts) if args.clip_starts else None
+        output_path = render_video_for_theme(
+            args.theme, reactions, title_text=args.title_text, clip_starts=clip_starts
+        )
         print(str(output_path))
     elif args.command == "upload":
         tags = [t.strip() for t in args.tags.split(",") if t.strip()]

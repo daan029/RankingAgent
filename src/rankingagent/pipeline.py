@@ -23,6 +23,7 @@ from rankingagent.discovery.reddit import RedditDiscoverySource
 from rankingagent.discovery.rss import RssDiscoverySource
 from rankingagent.download.downloader import download_clip
 from rankingagent.editing.assembler import render_video
+from rankingagent.editing.clip_processor import extract_preview_frames
 from rankingagent.ranking.scorer import select_and_rank
 from rankingagent.upload.youtube import upload_video
 
@@ -176,7 +177,42 @@ def select_top_clips(theme_name: str) -> list[dict]:
     return ranked
 
 
-def render_video_for_theme(theme_name: str, reactions: dict[str, str], title_text: str | None = None) -> Path:
+def preview_clip_frames(theme_name: str, count: int = 6) -> dict[str, list[dict]]:
+    """For each currently-selected clip, sample `count` evenly-spaced frames
+    across its full raw duration and return their paths/timestamps, so a
+    reviewer can see where the fail/punchline actually happens before
+    `render` trims each clip down to CLIP_DURATION_SECONDS — the moment
+    isn't always at the very start of the raw clip. Run this after `select`
+    and before `render`; pass the chosen start times to `render` via
+    --clip-starts."""
+    init_db()
+    themes = load_themes()
+    if theme_name not in themes:
+        raise ValueError(f"Unknown theme '{theme_name}'. Available: {', '.join(themes)}")
+    theme = themes[theme_name]
+
+    with get_connection() as conn:
+        rows = get_selected_clips(conn, theme.name)
+        if not rows:
+            raise ValueError(
+                f"No selected clips for theme '{theme_name}' — run `select` first."
+            )
+
+    preview_root = DOWNLOADS_DIR / theme.name / "_preview"
+    result: dict[str, list[dict]] = {}
+    for row in rows:
+        clip_dir = preview_root / row["id"]
+        result[row["id"]] = extract_preview_frames(Path(row["local_path"]), clip_dir, count=count)
+
+    return result
+
+
+def render_video_for_theme(
+    theme_name: str,
+    reactions: dict[str, str],
+    title_text: str | None = None,
+    clip_starts: dict[str, float] | None = None,
+) -> Path:
     init_db()
     themes = load_themes()
     if theme_name not in themes:
@@ -199,7 +235,7 @@ def render_video_for_theme(theme_name: str, reactions: dict[str, str], title_tex
     work_dir = RENDERS_DIR / theme.name / f"work_{timestamp}"
     output_path = RENDERS_DIR / theme.name / f"{timestamp}.mp4"
 
-    render_video(title_text, ranked_clips, reactions, work_dir, output_path)
+    render_video(title_text, ranked_clips, reactions, work_dir, output_path, clip_starts=clip_starts)
     logger.info("Rendered video for theme '%s' at %s", theme.name, output_path)
 
     _cleanup_after_render(theme.name, work_dir)

@@ -19,16 +19,16 @@ WATERMARK_TOP = HEIGHT - WATERMARK_SIZE - WATERMARK_MARGIN
 
 # YouTube Shorts' own UI (back button, follow/like/comment/share rail,
 # caption/username) covers the top and bottom of the frame, so text needs to
-# sit clear of both — pushed down ~20% from where it started, with blurred
-# bands behind it (top band contains the title; bottom band sits just above
-# the watermark) so the burned-in text stays legible over busy footage.
-# clip_processor.overlay_frame_on_clip blurs the video itself in these two
-# bands; these constants are shared between the two so the blur and the text
-# placement always line up.
-SHIFT_DOWN = int(HEIGHT * 0.20)
-TITLE_Y = 60 + SHIFT_DOWN
-SIDEBAR_START_Y = 260 + SHIFT_DOWN
-TOP_BLUR_HEIGHT = 560
+# sit clear of both, with blurred bands behind it (top band contains the
+# title; bottom band sits just above the watermark) so the burned-in text
+# stays legible over busy footage. clip_processor.overlay_frame_on_clip
+# blurs the video itself in these two bands; these constants are shared
+# between the two so the blur and the text placement always line up.
+SIDEBAR_SHIFT_DOWN = int(HEIGHT * 0.20)
+TITLE_SHIFT_DOWN = int(HEIGHT * 0.156)  # a bit less than the sidebar's shift
+TITLE_Y = 60 + TITLE_SHIFT_DOWN
+SIDEBAR_START_Y = 260 + SIDEBAR_SHIFT_DOWN
+TOP_BLUR_HEIGHT = 480
 BOTTOM_BLUR_HEIGHT = 260
 BOTTOM_BLUR_Y = WATERMARK_TOP - BOTTOM_BLUR_HEIGHT
 
@@ -104,15 +104,32 @@ def _draw_mixed_text(draw: ImageDraw.ImageDraw, xy, text, font, fill, outline_wi
             x += font.getlength(ch)
 
 
+def _split_highlight_segments(title_text: str) -> list[tuple[str, bool]]:
+    """Split on `*marked*` spans, e.g. "Craziest *Fails* Of The Week" ->
+    [("Craziest ", False), ("Fails", True), (" Of The Week", False)].
+    Only the marked word(s) render in brand red — the rest stays white,
+    same as the "Ranking Best " prefix. Falls back to highlighting nothing
+    (all white) if the markers are missing or unbalanced, rather than
+    guessing which word matters."""
+    parts = title_text.split("*")
+    if len(parts) % 2 == 0:
+        # odd number of '*' — unbalanced markup, don't guess
+        return [(title_text, False)]
+    return [(part, i % 2 == 1) for i, part in enumerate(parts) if part]
+
+
 def _draw_title_bar(draw: ImageDraw.ImageDraw, title_text: str) -> None:
     font = _load_font(64)
     prefix = "Ranking Best "
-    prefix_w = draw.textlength(prefix, font=font)
-    label_w = draw.textlength(title_text, font=font)
-    x = (WIDTH - (prefix_w + label_w)) / 2
+    segments = [(prefix, False)] + _split_highlight_segments(title_text)
+
+    total_w = sum(draw.textlength(text, font=font) for text, _ in segments)
+    x = (WIDTH - total_w) / 2
     y = TITLE_Y
-    _draw_outlined_text(draw, (x, y), prefix, font, WHITE)
-    _draw_outlined_text(draw, (x + prefix_w, y), title_text, font, BRAND_RED)
+    for text, highlighted in segments:
+        color = BRAND_RED if highlighted else WHITE
+        _draw_outlined_text(draw, (x, y), text, font, color)
+        x += draw.textlength(text, font=font)
 
 
 def _draw_sidebar(draw: ImageDraw.ImageDraw, ranked_clips: list[dict], revealed_count: int) -> None:

@@ -8,10 +8,12 @@ from rankingagent.editing.overlay import BOTTOM_BLUR_HEIGHT, BOTTOM_BLUR_Y, TOP_
 WIDTH, HEIGHT = 1080, 1920
 
 
-def normalize_clip(input_path: Path, output_path: Path, duration: float = 3.5) -> None:
+def normalize_clip(input_path: Path, output_path: Path, duration: float = 3.5, start: float = 0.0) -> None:
     """Scale+crop a raw clip to fill 1080x1920 and trim it to `duration`
-    seconds, re-encoded so every segment shares identical codec params
-    (required for the later stream-copy concat)."""
+    seconds starting at `start` seconds (see extract_preview_frames — the
+    fail/punchline isn't always at the very start of the raw clip), re-
+    encoded so every segment shares identical codec params (required for
+    the later stream-copy concat)."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     vf = (
         f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,"
@@ -19,6 +21,7 @@ def normalize_clip(input_path: Path, output_path: Path, duration: float = 3.5) -
     )
     cmd = [
         "ffmpeg", "-y",
+        "-ss", str(start),
         "-i", str(input_path),
         "-t", str(duration),
         "-vf", vf,
@@ -29,6 +32,47 @@ def normalize_clip(input_path: Path, output_path: Path, duration: float = 3.5) -
         str(output_path),
     ]
     subprocess.run(cmd, check=True, capture_output=True)
+
+
+def get_duration(input_path: Path) -> float:
+    result = subprocess.run(
+        [
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(input_path),
+        ],
+        check=True, capture_output=True, text=True,
+    )
+    return float(result.stdout.strip())
+
+
+def extract_preview_frames(input_path: Path, out_dir: Path, count: int = 6) -> list[dict]:
+    """Sample `count` evenly-spaced frames across the clip's full duration,
+    so a reviewer (the daily agent or a human) can see which part of the
+    clip actually has the fail/punchline in it before picking a trim start
+    — the moment often isn't at the very beginning of the raw clip."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    duration = get_duration(input_path)
+
+    frames = []
+    for i in range(count):
+        # skip the very first/last instants — often blank/transition frames
+        t = duration * (i + 0.5) / count
+        frame_path = out_dir / f"frame_{i}_{t:.1f}s.png"
+        subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-ss", str(t),
+                "-i", str(input_path),
+                "-frames:v", "1", "-q:v", "3",
+                str(frame_path),
+            ],
+            check=True, capture_output=True,
+        )
+        frames.append({"time": round(t, 1), "path": str(frame_path)})
+
+    return frames
 
 
 def overlay_frame_on_clip(clip_path: Path, overlay_png: Path, output_path: Path) -> None:

@@ -78,7 +78,24 @@ This prints a JSON array of the 5 chosen clips, each with `id`, `caption`,
 and `reveal_index` (the order clips appear in the video). Keep this JSON —
 you'll need the `id`s and `caption`s for the next steps.
 
-## 5. Write a reaction for each clip
+## 5. Pick where each clip starts — do not skip this
+
+The fail/punchline is often NOT at the very start of the raw clip (confirmed
+2026-08-14: a car-vs-gate clip's action didn't start until ~16s into a 66s
+clip — rendering from 0s showed nothing happening). Sample frames across
+each selected clip's full duration:
+
+```
+python -m rankingagent.cli preview-frames --theme <theme> --count 6
+```
+
+Look at the returned frame images for each clip and figure out roughly when
+the interesting moment happens. Build a JSON object mapping clip `id` ->
+start offset in seconds for any clip where 0 isn't a good start (omit clips
+where the action is already visible from the beginning):
+`{"reddit_abc123": 14.0}`
+
+## 6. Write a reaction for each clip
 
 For each of the 5 clips, based on its `caption` (and `source_url` if you can
 usefully check it), write a short reaction — 1 to 3 words plus one emoji,
@@ -87,7 +104,7 @@ Keep it punchy, not a description of what happens. Build a JSON object
 mapping clip `id` -> reaction text, e.g.:
 `{"reddit_abc123": "Ouch😬", "reddit_def456": "No way😱"}`
 
-## 6. Write the on-screen title, YouTube title, and description
+## 7. Write the on-screen title, YouTube title, and description
 
 Check `python -m rankingagent.cli history --theme <theme>` for previously
 used titles so you don't repeat one. Based on the actual 5 selected clips
@@ -100,7 +117,10 @@ You're writing **two** related but distinct pieces of text:
   words with real context about tonight's specific clips — not just the bare
   theme name ("Fails"). E.g. "Craziest Fails Of The Week" or "Fails You Won't
   Believe". Keep it short enough to fit one line at the top of a vertical
-  video (roughly 3-6 words after "Ranking Best ").
+  video (roughly 3-6 words after "Ranking Best "). Wrap only the single most
+  important word (or two) in asterisks — that part renders in brand red, the
+  rest in white, e.g. `"*Craziest* Fails Of The Week"`. Don't wrap the whole
+  phrase; pick just the word that matters most.
 - **YouTube title** (video metadata): favor a clear hook, no misleading
   claims, under 100 characters, include `#Shorts`. Can be longer/more
   specific than the on-screen title.
@@ -119,19 +139,19 @@ If you're the creator of a clip and want it removed, contact us at [email].
 #Shorts #<theme-related-tags>
 ```
 
-## 7. Render the video
+## 8. Render the video
 
 ```
-python -m rankingagent.cli render --theme <theme> --reactions '<json from step 5>' --title-text "<on-screen title from step 6>"
+python -m rankingagent.cli render --theme <theme> --reactions '<json from step 6>' --title-text "<on-screen title from step 7>" --clip-starts '<json from step 5, or omit if all clips start at 0>'
 ```
 
 Prints the path to the rendered mp4. If ffmpeg isn't on PATH or fails,
 report the error rather than retrying blindly.
 
-## 8. Upload
+## 9. Upload
 
 ```
-python -m rankingagent.cli upload --theme <theme> --video <path from step 7> --title "<YouTube title from step 6>" --description "<description from step 6>" --tags "<comma,separated,tags>"
+python -m rankingagent.cli upload --theme <theme> --video <path from step 8> --title "<YouTube title from step 7>" --description "<description from step 7>" --tags "<comma,separated,tags>"
 ```
 
 Don't pass `--privacy` unless the user has explicitly told you to go public —
@@ -145,7 +165,7 @@ that, the cached token is reused automatically (see
 token expires every 7 days and needs re-consent; get the app verified to
 avoid that).
 
-## 9. Report
+## 10. Report
 
 State the resulting YouTube URL, the theme and title chosen, and note the
 privacy status. If any step was skipped or failed, say so clearly instead of
