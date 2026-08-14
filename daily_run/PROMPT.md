@@ -78,22 +78,17 @@ This prints a JSON array of the 5 chosen clips, each with `id`, `caption`,
 and `reveal_index` (the order clips appear in the video). Keep this JSON —
 you'll need the `id`s and `caption`s for the next steps.
 
-## 5. Pick where each clip starts — do not skip this
+## 5. Clip trim points are automatic — nothing to do here
 
-The fail/punchline is often NOT at the very start of the raw clip (confirmed
-2026-08-14: a car-vs-gate clip's action didn't start until ~16s into a 66s
-clip — rendering from 0s showed nothing happening). Sample frames across
-each selected clip's full duration:
-
-```
-python -m rankingagent.cli preview-frames --theme <theme> --count 6
-```
-
-Look at the returned frame images for each clip and figure out roughly when
-the interesting moment happens. Build a JSON object mapping clip `id` ->
-start offset in seconds for any clip where 0 isn't a good start (omit clips
-where the action is already visible from the beginning):
-`{"reddit_abc123": 14.0}`
+`render` (step 8) automatically asks Gemini where the fail/highlight moment
+is in each clip and trims from there — the fail/punchline is often NOT at
+the very start of the raw clip (confirmed 2026-08-14: a car-vs-gate clip's
+action didn't start until ~16s into a 66s clip), so this is no longer a
+manual step. Only intervene if you have a specific reason to override a
+clip's start time: pass `--clip-starts '{"reddit_abc123": 14.0}'` to
+`render`, which takes precedence over Gemini's pick for that clip. Requires
+`GEMINI_API_KEY` in `.env`; if it's missing, `render` logs a warning and
+every clip defaults to start=0 instead of failing outright.
 
 ## 6. Write a reaction for each clip
 
@@ -142,11 +137,13 @@ If you're the creator of a clip and want it removed, contact us at [email].
 ## 8. Render the video
 
 ```
-python -m rankingagent.cli render --theme <theme> --reactions '<json from step 6>' --title-text "<on-screen title from step 7>" --clip-starts '<json from step 5, or omit if all clips start at 0>'
+python -m rankingagent.cli render --theme <theme> --reactions '<json from step 6>' --title-text "<on-screen title from step 7>"
 ```
 
-Prints the path to the rendered mp4. If ffmpeg isn't on PATH or fails,
-report the error rather than retrying blindly.
+This calls Gemini once per clip to find its highlight moment (see step 5) —
+expect it to take a bit longer than a plain render, that's normal. Prints
+the path to the rendered mp4. If ffmpeg isn't on PATH or fails, report the
+error rather than retrying blindly.
 
 ## 9. Upload
 

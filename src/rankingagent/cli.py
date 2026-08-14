@@ -85,8 +85,13 @@ def main() -> None:
     render_parser.add_argument(
         "--clip-starts",
         default=None,
-        help='JSON object mapping clip id -> trim start offset in seconds, from reviewing `preview-frames` output, '
-             'e.g. \'{"reddit_abc123": 4.5}\'. Clips not listed start at 0.',
+        help='JSON object mapping clip id -> trim start offset in seconds, to override the automatic Gemini '
+             'highlight detection for specific clips, e.g. \'{"reddit_abc123": 4.5}\'.',
+    )
+    render_parser.add_argument(
+        "--no-auto-highlight",
+        action="store_true",
+        help="Skip the automatic Gemini highlight-moment detection (clips default to start=0 unless in --clip-starts)",
     )
 
     upload_parser = subparsers.add_parser("upload", help="Upload a rendered video to YouTube")
@@ -136,7 +141,8 @@ def main() -> None:
         reactions = json.loads(args.reactions)
         clip_starts = json.loads(args.clip_starts) if args.clip_starts else None
         output_path = render_video_for_theme(
-            args.theme, reactions, title_text=args.title_text, clip_starts=clip_starts
+            args.theme, reactions, title_text=args.title_text, clip_starts=clip_starts,
+            auto_highlight=not args.no_auto_highlight,
         )
         print(str(output_path))
     elif args.command == "upload":

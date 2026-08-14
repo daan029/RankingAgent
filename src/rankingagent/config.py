@@ -47,6 +47,7 @@ class Settings:
     ytdlp_no_check_certificate: bool = field(
         default_factory=lambda: os.environ.get("YTDLP_NO_CHECK_CERTIFICATE", "false").lower() == "true"
     )
+    gemini_api_key: str = field(default_factory=lambda: os.environ.get("GEMINI_API_KEY", ""))
 
 
 def load_settings() -> Settings:

@@ -24,6 +24,7 @@ from rankingagent.discovery.rss import RssDiscoverySource
 from rankingagent.download.downloader import download_clip
 from rankingagent.editing.assembler import render_video
 from rankingagent.editing.clip_processor import extract_preview_frames
+from rankingagent.editing.highlight import find_highlight_timestamp
 from rankingagent.ranking.scorer import select_and_rank
 from rankingagent.upload.youtube import upload_video
 
@@ -207,11 +208,40 @@ def preview_clip_frames(theme_name: str, count: int = 6) -> dict[str, list[dict]
     return result
 
 
+def _auto_detect_clip_starts(
+    ranked_clips: list[dict], clip_starts: dict[str, float], gemini_api_key: str
+) -> dict[str, float]:
+    """Ask Gemini where the fail/highlight moment is for every clip that
+    doesn't already have an explicit start in `clip_starts` — see
+    editing.highlight.find_highlight_timestamp. An explicit clip_starts
+    entry always wins (lets a caller override a specific clip); clips where
+    Gemini's call fails fall back to 0 rather than blocking the render."""
+    resolved = dict(clip_starts)
+    if not gemini_api_key:
+        logger.warning("GEMINI_API_KEY not set — skipping auto highlight detection, all unset clips start at 0")
+        return resolved
+
+    for clip in ranked_clips:
+        if clip["id"] in resolved:
+            continue
+        try:
+            start = find_highlight_timestamp(Path(clip["local_path"]), gemini_api_key)
+        except Exception:
+            logger.exception("Gemini highlight detection failed for clip %s", clip["id"])
+            start = None
+
+        resolved[clip["id"]] = start if start is not None else 0.0
+        logger.info("Auto-detected start for clip %s: %.1fs", clip["id"], resolved[clip["id"]])
+
+    return resolved
+
+
 def render_video_for_theme(
     theme_name: str,
     reactions: dict[str, str],
     title_text: str | None = None,
     clip_starts: dict[str, float] | None = None,
+    auto_highlight: bool = True,
 ) -> Path:
     init_db()
     themes = load_themes()
@@ -230,6 +260,11 @@ def render_video_for_theme(
 
         for clip_id, reaction in reactions.items():
             set_clip_reaction(conn, clip_id, reaction)
+
+    clip_starts = clip_starts or {}
+    if auto_highlight:
+        settings = load_settings()
+        clip_starts = _auto_detect_clip_starts(ranked_clips, clip_starts, settings.gemini_api_key)
 
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     work_dir = RENDERS_DIR / theme.name / f"work_{timestamp}"
