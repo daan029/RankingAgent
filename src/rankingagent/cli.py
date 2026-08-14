@@ -9,7 +9,10 @@ from pathlib import Path
 from rankingagent.pipeline import (
     discover_and_download,
     discover_from_urls,
+    discover_via_rss,
     get_theme_history,
+    list_candidates,
+    reject_clips,
     render_video_for_theme,
     select_top_clips,
     upload_rendered_video,
@@ -33,6 +36,23 @@ def main() -> None:
     discover_manual_parser.add_argument(
         "--urls-file", required=True, help="Text file with one Reddit post URL per line"
     )
+
+    discover_rss_parser = subparsers.add_parser(
+        "discover-rss",
+        help="Fully automated discovery via subreddit RSS feeds (no API approval needed, but slow/rate-limited and unfiltered for tone)",
+    )
+    discover_rss_parser.add_argument("--theme", required=True, help="Theme name from config/themes.yaml")
+
+    candidates_parser = subparsers.add_parser(
+        "candidates", help="List downloaded-but-unselected clips for content review; prints JSON"
+    )
+    candidates_parser.add_argument("--theme", required=True, help="Theme name from config/themes.yaml")
+
+    reject_parser = subparsers.add_parser(
+        "reject", help="Mark clips as rejected (excluded from select) after content review"
+    )
+    reject_parser.add_argument("--theme", required=True, help="Theme name from config/themes.yaml")
+    reject_parser.add_argument("--clip-ids", required=True, help="Comma-separated clip ids")
 
     select_parser = subparsers.add_parser(
         "select", help="Rank and select the top clips for a theme; prints JSON"
@@ -79,6 +99,13 @@ def main() -> None:
     elif args.command == "discover-manual":
         urls = Path(args.urls_file).read_text(encoding="utf-8").splitlines()
         discover_from_urls(args.theme, urls)
+    elif args.command == "discover-rss":
+        discover_via_rss(args.theme)
+    elif args.command == "candidates":
+        print(json.dumps(list_candidates(args.theme), indent=2, default=str))
+    elif args.command == "reject":
+        clip_ids = [c.strip() for c in args.clip_ids.split(",") if c.strip()]
+        reject_clips(args.theme, clip_ids)
     elif args.command == "select":
         ranked = select_top_clips(args.theme)
         print(json.dumps(ranked, indent=2, default=str))

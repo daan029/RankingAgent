@@ -21,16 +21,53 @@ reasonable alternative exists. Pick one theme for today.
 
 ## 2. Discover and download clips
 
+Reddit's official API application for this project was denied (see the
+`reddit-api-blocker` memory entry), so the primary discovery path is RSS,
+not the API:
+
 ```
-python -m rankingagent.cli discover --theme <theme>
+python -m rankingagent.cli discover-rss --theme <theme>
 ```
 
-This pulls candidate clips from Reddit and downloads them. If it fails
-because Reddit API access isn't approved yet, stop here and report that —
-don't fall back to a different data source without checking with the user
-first.
+This is **slow on purpose** (paced ~25s between requests to avoid Reddit's
+anonymous rate limit) — a run touching 3 subreddits can take 10+ minutes.
+Let it run; don't interrupt or parallelize it. If it fails outright (not
+just slow), fall back to:
 
-## 3. Select and rank
+```
+python -m rankingagent.cli discover-manual --theme <theme> --urls-file <path>
+```
+
+— but only if you or the user already have a curated URL list ready; don't
+invent one. If neither path yields any clips, stop and report rather than
+guessing.
+
+## 3. Review candidates for tone BEFORE selecting — do not skip this
+
+RSS "top" posts are **not** pre-filtered for tone or appropriateness. This
+is a confirmed real issue, not a theoretical one: on 2026-08-14,
+r/PublicFreakout's actual top-of-week posts were mostly serious political/
+war-related confrontations (not comedic), and one r/Whatcouldgowrong
+candidate involved a real firearm mishap. Both would be inappropriate for
+this brand (chaos/comedy — NOT tragedy, real injury, war, or political
+conflict).
+
+```
+python -m rankingagent.cli candidates --theme <theme>
+```
+
+Read every candidate's `caption` (and creator/source_url if the caption is
+ambiguous). Reject anything that is: political or war-related, about a real
+injury/death/tragedy, sexual, or otherwise not lighthearted comedic chaos.
+
+```
+python -m rankingagent.cli reject --theme <theme> --clip-ids <comma,separated,ids>
+```
+
+Only proceed to step 4 once the remaining candidates are all genuinely
+on-brand.
+
+## 4. Select and rank
 
 ```
 python -m rankingagent.cli select --theme <theme>
@@ -41,7 +78,7 @@ This prints a JSON array of the 5 chosen clips, each with `id`, `caption`,
 and `reveal_index` (the order clips appear in the video). Keep this JSON —
 you'll need the `id`s and `caption`s for the next steps.
 
-## 4. Write a reaction for each clip
+## 5. Write a reaction for each clip
 
 For each of the 5 clips, based on its `caption` (and `source_url` if you can
 usefully check it), write a short reaction — 1 to 3 words plus one emoji,
@@ -50,16 +87,16 @@ Keep it punchy, not a description of what happens. Build a JSON object
 mapping clip `id` -> reaction text, e.g.:
 `{"reddit_abc123": "Ouch😬", "reddit_def456": "No way😱"}`
 
-## 5. Render the video
+## 6. Render the video
 
 ```
-python -m rankingagent.cli render --theme <theme> --reactions '<json from step 4>'
+python -m rankingagent.cli render --theme <theme> --reactions '<json from step 5>'
 ```
 
 Prints the path to the rendered mp4. If ffmpeg isn't on PATH or fails,
 report the error rather than retrying blindly.
 
-## 6. Write the title and description
+## 7. Write the title and description
 
 Check `python -m rankingagent.cli history --theme <theme>` for previously
 used titles so you don't repeat one. Based on the actual 5 selected clips
@@ -68,7 +105,7 @@ pick the best one yourself — favor a clear hook, no misleading claims, under
 100 characters, include `#Shorts`.
 
 The description MUST credit each of the 5 clips' original creators by their
-Reddit username (from the `creator` field in step 3's output) — this is a
+Reddit username (from the `creator` field in step 4's output) — this is a
 non-negotiable project requirement, not optional flavor text. Use a template
 like:
 
@@ -81,10 +118,10 @@ If you're the creator of a clip and want it removed, contact us at [email].
 #Shorts #<theme-related-tags>
 ```
 
-## 7. Upload
+## 8. Upload
 
 ```
-python -m rankingagent.cli upload --theme <theme> --video <path from step 5> --title "<title>" --description "<description>" --tags "<comma,separated,tags>"
+python -m rankingagent.cli upload --theme <theme> --video <path from step 6> --title "<title>" --description "<description>" --tags "<comma,separated,tags>"
 ```
 
 Don't pass `--privacy` unless the user has explicitly told you to go public —
@@ -98,7 +135,7 @@ that, the cached token is reused automatically (see
 token expires every 7 days and needs re-consent; get the app verified to
 avoid that).
 
-## 8. Report
+## 9. Report
 
 State the resulting YouTube URL, the theme and title chosen, and note the
 privacy status. If any step was skipped or failed, say so clearly instead of

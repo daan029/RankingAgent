@@ -19,6 +19,7 @@ from rankingagent.db.store import (
 )
 from rankingagent.discovery.manual import ManualDiscoverySource
 from rankingagent.discovery.reddit import RedditDiscoverySource
+from rankingagent.discovery.rss import RssDiscoverySource
 from rankingagent.download.downloader import download_clip
 from rankingagent.editing.assembler import render_video
 from rankingagent.ranking.scorer import select_and_rank
@@ -98,6 +99,66 @@ def discover_from_urls(theme_name: str, urls: list[str]) -> None:
             upsert_clip(conn, clip.as_db_row())
 
     _download_pending(theme.name, settings.ytdlp_no_check_certificate)
+
+
+def discover_via_rss(theme_name: str) -> None:
+    """Fully automated discovery via subreddit RSS feeds — no Reddit API
+    approval needed (see reddit-api-blocker memory: the API application was
+    denied). Deliberately slow (paced requests to avoid Reddit's anonymous
+    rate limit). IMPORTANT: RSS "top" posts are not pre-filtered for tone —
+    review with `candidates`/`reject` before running `select`, since a
+    subreddit's current top posts can skew political/tragic/graphic rather
+    than the comedic tone this project wants (observed directly with
+    r/PublicFreakout on 2026-08-14)."""
+    init_db()
+    themes = load_themes()
+    if theme_name not in themes:
+        raise ValueError(f"Unknown theme '{theme_name}'. Available: {', '.join(themes)}")
+    theme = themes[theme_name]
+
+    settings = load_settings()
+    source = RssDiscoverySource(no_check_certificate=settings.ytdlp_no_check_certificate)
+
+    logger.info("RSS-discovering clips for theme '%s' from %s (this is slow by design)", theme.name, theme.subreddits)
+    clips = source.discover(
+        theme_name=theme.name,
+        subreddits=theme.subreddits,
+        min_score=theme.min_score,
+        limit=max(theme.clip_count * 4, 20),
+    )
+    logger.info("Discovered %d candidate clips", len(clips))
+
+    with get_connection() as conn:
+        for clip in clips:
+            upsert_clip(conn, clip.as_db_row())
+
+    _download_pending(theme.name, settings.ytdlp_no_check_certificate)
+
+
+def list_candidates(theme_name: str) -> list[dict]:
+    """Downloaded-but-not-yet-selected clips, for content review before
+    `select` — check each caption/creator for tone/appropriateness and
+    `reject` anything that doesn't fit before proceeding."""
+    init_db()
+    themes = load_themes()
+    if theme_name not in themes:
+        raise ValueError(f"Unknown theme '{theme_name}'. Available: {', '.join(themes)}")
+    theme = themes[theme_name]
+
+    with get_connection() as conn:
+        rows = get_clips_by_status(conn, theme.name, "downloaded")
+
+    return [dict(row) for row in rows]
+
+
+def reject_clips(theme_name: str, clip_ids: list[str]) -> None:
+    """Mark clips as rejected so `select` skips them — used after reviewing
+    `list_candidates` output for tone/appropriateness."""
+    init_db()
+    with get_connection() as conn:
+        for clip_id in clip_ids:
+            mark_clip_status(conn, clip_id, "rejected")
+    logger.info("Rejected %d clips for theme '%s'", len(clip_ids), theme_name)
 
 
 def select_top_clips(theme_name: str) -> list[dict]:
