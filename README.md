@@ -16,14 +16,19 @@ rank/reaction overlays and a watermark, and uploads to YouTube — one video a d
    ```
 2. Install [ffmpeg](https://ffmpeg.org/download.html) and make sure it's on your `PATH`.
 3. Copy `.env.example` to `.env` and fill in:
-   - Reddit API credentials (`REDDIT_CLIENT_ID`/`REDDIT_CLIENT_SECRET`) — as of
-     late 2025, Reddit closed self-service app registration behind a manual
-     "Responsible Builder Policy" approval process. See the
-     `reddit-api-blocker` memory entry / project plan for status; `discover`
-     will fail until this is approved.
    - `YOUTUBE_CLIENT_SECRETS_PATH` — a YouTube Data API v3 OAuth client
-     secrets JSON from Google Cloud Console (see `upload/youtube.py` docstring
-     for the scope/gotchas this project already learned the hard way).
+     secrets JSON from Google Cloud Console, created under the Google account
+     that owns the DailyWreck channel (see `upload/youtube.py` docstring and
+     the `youtube-upload-lessons` memory entry for the scope/gotchas this
+     project already learned the hard way).
+   - `GEMINI_API_KEY` — used for auto highlight-detection during `render`
+     (free tier, but only 20 requests/day — see `video-pipeline-gotchas`).
+   - Reddit API credentials (`REDDIT_CLIENT_ID`/`REDDIT_CLIENT_SECRET`) are
+     **not required** — Reddit closed self-service app registration behind a
+     manual "Responsible Builder Policy" approval process (see the
+     `reddit-api-blocker` memory entry), so `discover` (PRAW) doesn't work.
+     Use `discover-rss` or `discover-manual` instead, which need no Reddit
+     API access at all.
 4. Themes (subreddits, on-screen label, thresholds) live in `config/themes.yaml`.
 5. Brand assets live in `assets/brand/` (`watermark.png` used in every video,
    `banner.png` for the YouTube channel page).
@@ -34,7 +39,9 @@ Each pipeline stage is its own CLI subcommand, so a human (or the daily agent
 run, see below) can inspect/decide between steps:
 
 ```
-python -m rankingagent.cli discover --theme fails
+python -m rankingagent.cli discover-rss --theme fails
+python -m rankingagent.cli candidates --theme fails   # review for tone; RSS "top" isn't pre-filtered
+python -m rankingagent.cli reject --theme fails --clip-ids <id1>,<id2>
 python -m rankingagent.cli select --theme fails
 python -m rankingagent.cli render --theme fails --reactions '{"<clip_id>": "Ouch"}'
 python -m rankingagent.cli upload --theme fails --video <path> --title "..." --description "..."
@@ -67,10 +74,18 @@ Setup on the home laptop:
 
 ## Status
 
-M0-M6 scaffolded: Reddit discovery/download, ranking/selection with dedupe,
-ffmpeg/Pillow video assembly matching the DailyWreck brand, YouTube upload,
-history/dedupe CLI, and the daily headless-agent orchestration prompt +
-Task Scheduler wiring. Blocked on live testing until Reddit API access is
-approved (see `reddit-api-blocker` memory / project plan) — everything so far
-has been verified with synthetic test clips. TikTok/Instagram as additional
+M0-M6 built and verified end-to-end with **real Reddit content**: discovery,
+download, ranking/selection with dedupe, ffmpeg/Pillow video assembly
+matching the DailyWreck brand, YouTube upload, history/dedupe CLI, and the
+daily headless-agent orchestration prompt + Task Scheduler wiring.
+
+Reddit's official API (PRAW, `discover`) is still blocked pending their
+manual "Responsible Builder Policy" approval — but that's no longer a
+blocker for the pipeline: `discover-rss` (subreddit `/top/.rss` feeds) and
+`discover-manual` (curated URL list), both via `yt-dlp`, need no API
+approval and are the discovery paths actually in use. See
+`reddit-api-blocker` memory for the full story.
+
+First real video published 2026-08-17: episode #1,
+`youtube.com/watch?v=oUDFu0OL4QE` (public). TikTok/Instagram as additional
 clip sources remain deferred/optional (see the project plan).
