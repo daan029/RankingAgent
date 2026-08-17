@@ -11,6 +11,7 @@ from rankingagent.db.store import (
     get_selected_clips,
     get_video_history,
     init_db,
+    mark_clip_audio,
     mark_clip_downloaded,
     mark_clip_status,
     record_video,
@@ -23,7 +24,7 @@ from rankingagent.discovery.reddit import RedditDiscoverySource
 from rankingagent.discovery.rss import RssDiscoverySource
 from rankingagent.download.downloader import download_clip
 from rankingagent.editing.assembler import render_video
-from rankingagent.editing.clip_processor import extract_preview_frames
+from rankingagent.editing.clip_processor import extract_preview_frames, has_audio_stream
 from rankingagent.editing.highlight import find_highlight_timestamp
 from rankingagent.ranking.scorer import select_and_rank
 from rankingagent.upload.youtube import upload_video
@@ -44,6 +45,10 @@ def _download_pending(theme_name: str, no_check_certificate: bool) -> None:
         with get_connection() as conn:
             if local_path is not None:
                 mark_clip_downloaded(conn, row["id"], str(local_path))
+                try:
+                    mark_clip_audio(conn, row["id"], has_audio_stream(local_path))
+                except Exception:
+                    logger.exception("Audio-stream probe failed for clip %s, assuming it has audio", row["id"])
                 downloaded += 1
             else:
                 conn.execute(

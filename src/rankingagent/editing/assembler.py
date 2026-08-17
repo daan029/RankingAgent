@@ -36,7 +36,14 @@ def render_video(
     for idx, clip in enumerate(ordered):
         normalized = work_dir / f"norm_{idx}.mp4"
         start = clip_starts.get(clip["id"], 0.0)
-        normalize_clip(Path(clip["local_path"]), normalized, duration=CLIP_DURATION_SECONDS, start=start)
+        # Viewers reliably report the opening segment as silent even when it
+        # technically isn't (YouTube Shorts autoplay-mute catches them before
+        # they've tapped to unmute) — force a quiet music bed under clip 0
+        # regardless of has_audio_stream, so the open never reads as silent.
+        normalize_clip(
+            Path(clip["local_path"]), normalized, duration=CLIP_DURATION_SECONDS, start=start,
+            force_music_bed=(idx == 0),
+        )
 
         overlay_img = work_dir / f"overlay_{idx}.png"
         frame = render_overlay_frame(title_text, ranked_clips, revealed_count=idx + 1)

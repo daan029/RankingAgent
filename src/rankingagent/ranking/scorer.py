@@ -26,7 +26,24 @@ def select_and_rank(conn: sqlite3.Connection, theme_name: str, count: int = 5) -
     ).fetchall()
 
     eligible = [row for row in candidates if row["id"] not in used_ids]
-    top = eligible[:count]
+
+    # At most one clip without audio per rendered video (see
+    # editing.clip_processor.normalize_clip — a silent clip gets piano.mp3
+    # mixed in as a fallback, and using that fallback twice in the same
+    # video would be repetitive). has_audio is NULL for rows probed before
+    # this column existed, or if the ffprobe check itself failed; treat
+    # those as "has audio" rather than blocking selection on missing data.
+    top: list[sqlite3.Row] = []
+    silent_already_selected = False
+    for row in eligible:
+        if len(top) >= count:
+            break
+        is_silent = row["has_audio"] == 0
+        if is_silent and silent_already_selected:
+            continue
+        top.append(row)
+        if is_silent:
+            silent_already_selected = True
 
     if not top:
         return []

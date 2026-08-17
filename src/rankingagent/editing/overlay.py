@@ -26,7 +26,7 @@ WATERMARK_TOP = HEIGHT - WATERMARK_SIZE - WATERMARK_MARGIN
 # between the two so the blur and the text placement always line up.
 SIDEBAR_SHIFT_DOWN = int(HEIGHT * 0.20)
 TITLE_SHIFT_DOWN = int(HEIGHT * 0.156)  # a bit less than the sidebar's shift
-TITLE_Y = 60 + TITLE_SHIFT_DOWN
+TITLE_Y = 60 + TITLE_SHIFT_DOWN - int(HEIGHT * 0.05)
 SIDEBAR_START_Y = 260 + SIDEBAR_SHIFT_DOWN
 TOP_BLUR_HEIGHT = 480
 BOTTOM_BLUR_HEIGHT = 260

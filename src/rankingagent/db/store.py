@@ -15,6 +15,13 @@ def init_db(db_path: Path = DB_PATH) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:
         conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+        # Migration for databases created before has_audio existed —
+        # CREATE TABLE IF NOT EXISTS above doesn't add columns to an
+        # already-existing table.
+        try:
+            conn.execute("ALTER TABLE clips ADD COLUMN has_audio INTEGER")
+        except sqlite3.OperationalError:
+            pass
 
 
 @contextmanager
@@ -46,6 +53,13 @@ def mark_clip_downloaded(conn: sqlite3.Connection, clip_id: str, local_path: str
     conn.execute(
         "UPDATE clips SET local_path = ?, status = 'downloaded', updated_at = datetime('now') WHERE id = ?",
         (local_path, clip_id),
+    )
+
+
+def mark_clip_audio(conn: sqlite3.Connection, clip_id: str, has_audio: bool) -> None:
+    conn.execute(
+        "UPDATE clips SET has_audio = ?, updated_at = datetime('now') WHERE id = ?",
+        (1 if has_audio else 0, clip_id),
     )
 
 
