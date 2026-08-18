@@ -6,7 +6,7 @@ from pathlib import Path
 from rankingagent.editing.clip_processor import normalize_clip, overlay_frame_on_clip
 from rankingagent.editing.overlay import render_overlay_frame
 
-CLIP_DURATION_SECONDS = 7.0
+CLIP_DURATION_SECONDS = 7.0  # fallback for clips with no detected/explicit duration
 
 
 def render_video(
@@ -16,16 +16,21 @@ def render_video(
     work_dir: Path,
     output_path: Path,
     clip_starts: dict[str, float] | None = None,
+    clip_durations: dict[str, float] | None = None,
 ) -> Path:
     """Build the full ranking video: normalize + overlay each clip in reveal
     order (sidebar accumulates revealed reactions as it goes, #1/climax
     always last), then concat the segments. `ranked_clips` rows must already
     carry `rank` and `reveal_index` (set by ranking.scorer.select_and_rank).
     `clip_starts` maps clip id -> trim start offset in seconds (from
-    editing.clip_processor.extract_preview_frames review); defaults to 0 for
-    any clip not present."""
+    editing.clip_processor.extract_preview_frames review, or Gemini highlight
+    detection); defaults to 0 for any clip not present. `clip_durations` maps
+    clip id -> how long that clip's segment should run — clips vary (a quick
+    impact vs. a longer confrontation), so this is no longer a single fixed
+    length; falls back to CLIP_DURATION_SECONDS for any clip not present."""
     work_dir.mkdir(parents=True, exist_ok=True)
     clip_starts = clip_starts or {}
+    clip_durations = clip_durations or {}
 
     for clip in ranked_clips:
         clip["reaction"] = reactions.get(clip["id"], "")
@@ -36,12 +41,13 @@ def render_video(
     for idx, clip in enumerate(ordered):
         normalized = work_dir / f"norm_{idx}.mp4"
         start = clip_starts.get(clip["id"], 0.0)
+        duration = clip_durations.get(clip["id"], CLIP_DURATION_SECONDS)
         # Viewers reliably report the opening segment as silent even when it
         # technically isn't (YouTube Shorts autoplay-mute catches them before
         # they've tapped to unmute) — force a quiet music bed under clip 0
         # regardless of has_audio_stream, so the open never reads as silent.
         normalize_clip(
-            Path(clip["local_path"]), normalized, duration=CLIP_DURATION_SECONDS, start=start,
+            Path(clip["local_path"]), normalized, duration=duration, start=start,
             force_music_bed=(idx == 0),
         )
 

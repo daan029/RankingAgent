@@ -24,12 +24,39 @@ themes:
       The 5 wildest Karen moments this week! Clips via Reddit, all credit to
       the original creators (see below).
 
+  - name: instant_karma
+    on_screen_label: "Instant Karma"
+    subreddits:
+      - instantkarma
+      - IdiotsInCars
+    # Lower than the other themes' min_score on purpose: the clips that
+    # actually stay under the 15s raw-duration cap (see
+    # ranking.scorer.MAX_RAW_CLIP_SECONDS) skew toward lower community score
+    # than the longer, more dramatic dashcam posts — a 1000 floor left too
+    # few eligible candidates after the duration filter (2026-08-18).
+    min_score: 300
+    clip_count: 5
+    title_template: "TOP 5 INSTANT KARMA MOMENTS ⚖️ #{episode} | #Shorts"
+    description_template: >
+      The 5 most satisfying instant karma moments this week! Clips via
+      Reddit, all credit to the original creators (see below).
+
   - name: worst_tackles
     on_screen_label: "Worst Tackles"
     subreddits:
       - footballhighlights
       - soccer
-    min_score: 800
+    # Lowered from 800 (2026-08-18): this week's actual top-of-week posts in
+    # both subreddits are dominated by goals/news, not tackles specifically —
+    # a bad-tackle clip is inherently less viral than a golazo, so a high
+    # score floor was filtering out the very content this theme needs before
+    # it's even seen. See [[clip-selection-narrative-fit]].
+    min_score: 300
+    # A genuinely bad/dirty tackle is a low-frequency event — scanning only
+    # this week's top posts came back with zero actual tackle clips twice in
+    # a row (2026-08-18). User's call: it doesn't need to be from this week,
+    # older iconic clips are fine (better, even). "year" instead of "week".
+    time_filter: year
     clip_count: 5
     title_template: "TOP 5 WORST TACKLES 🟥 #{episode} | #Shorts"
     description_template: >

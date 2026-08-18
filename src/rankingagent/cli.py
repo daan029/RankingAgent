@@ -104,6 +104,12 @@ def main() -> None:
         "--privacy", default=None, choices=["public", "unlisted", "private"],
         help="Defaults to YOUTUBE_PRIVACY_STATUS from .env (unlisted)",
     )
+    upload_parser.add_argument(
+        "--publish-at", default=None,
+        help="RFC3339 UTC timestamp (e.g. 2026-08-18T17:00:00Z) to schedule the video instead of "
+             "publishing immediately — forces privacy to 'private' until then, YouTube auto-flips it "
+             "to public at this time.",
+    )
 
     history_parser = subparsers.add_parser(
         "history", help="Previously published videos for a theme; prints JSON"
@@ -154,6 +160,7 @@ def main() -> None:
             description=args.description,
             tags=tags,
             privacy_status=args.privacy,
+            publish_at=args.publish_at,
         )
         print(f"https://youtube.com/watch?v={video_id}")
     elif args.command == "history":

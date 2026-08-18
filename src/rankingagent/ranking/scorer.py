@@ -6,6 +6,13 @@ import sqlite3
 
 from rankingagent.db.store import set_clip_rank
 
+# Raw clips longer than this are excluded from selection entirely — Gemini's
+# highlight-window detection (editing.highlight) is far less reliable the
+# longer it has to search a clip for the actual moment, which was regularly
+# producing segments where "nothing happens" (2026-08-18 feedback). Clips
+# under this length rarely need precise cropping at all.
+MAX_RAW_CLIP_SECONDS = 15.0
+
 
 def get_used_clip_ids(conn: sqlite3.Connection) -> set[str]:
     used: set[str] = set()
@@ -25,7 +32,11 @@ def select_and_rank(conn: sqlite3.Connection, theme_name: str, count: int = 5) -
         (theme_name,),
     ).fetchall()
 
-    eligible = [row for row in candidates if row["id"] not in used_ids]
+    eligible = [
+        row for row in candidates
+        if row["id"] not in used_ids
+        and not (row["duration_seconds"] is not None and row["duration_seconds"] > MAX_RAW_CLIP_SECONDS)
+    ]
 
     # At most one clip without audio per rendered video (see
     # editing.clip_processor.normalize_clip — a silent clip gets piano.mp3

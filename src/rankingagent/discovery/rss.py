@@ -35,7 +35,7 @@ class RssDiscoverySource:
         self,
         no_check_certificate: bool = False,
         request_delay_seconds: float = 25.0,
-        max_candidates_per_subreddit: int = 10,
+        max_candidates_per_subreddit: int = 30,
     ):
         self.no_check_certificate = no_check_certificate
         self.request_delay_seconds = request_delay_seconds
@@ -82,22 +82,29 @@ class RssDiscoverySource:
             results.append((title_el.text or "", permalink, author))
         return results
 
-    def discover(self, theme_name: str, subreddits: list[str], min_score: int, limit: int) -> list[Clip]:
+    def discover(
+        self, theme_name: str, subreddits: list[str], min_score: int, limit: int, time_filter: str = "week"
+    ) -> list[Clip]:
         clips: list[Clip] = []
 
         for i, subreddit in enumerate(subreddits):
             if i > 0:
                 time.sleep(self.request_delay_seconds)
 
-            body = self._fetch_feed(subreddit, time_filter="week")
+            body = self._fetch_feed(subreddit, time_filter=time_filter)
             if body is None:
                 continue
 
             entries = self._parse_entries(body)[: self.max_candidates_per_subreddit]
             logger.info("r/%s: %d candidate posts from RSS", subreddit, len(entries))
 
-            for title, permalink, author in entries:
+            for entry_idx, (title, permalink, author) in enumerate(entries, start=1):
                 time.sleep(self.request_delay_seconds)
+                # Every other branch below (non-video, below min_score) skips
+                # silently — without a log line here, a run can go minutes
+                # with zero output during the pacing sleeps, which external
+                # process monitors can mistake for a hung/stalled process.
+                logger.info("r/%s: fetching metadata for candidate %d/%d", subreddit, entry_idx, len(entries))
                 info = fetch_metadata(permalink, no_check_certificate=self.no_check_certificate)
                 if info is None:
                     # Not a video post (or fetch failed) — skip.
@@ -117,6 +124,7 @@ class RssDiscoverySource:
                         caption=info.get("title") or title,
                         score=score,
                         num_comments=int(info.get("comment_count") or 0),
+                        duration_seconds=float(info["duration"]) if info.get("duration") else None,
                     )
                 )
 

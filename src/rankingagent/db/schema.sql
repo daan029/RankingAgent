@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS clips (
     num_comments INTEGER NOT NULL DEFAULT 0,
     local_path TEXT,
     has_audio INTEGER,
+    duration_seconds REAL,
     rank INTEGER,
     reveal_index INTEGER,
     reaction TEXT,

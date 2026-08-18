@@ -22,6 +22,10 @@ def init_db(db_path: Path = DB_PATH) -> None:
             conn.execute("ALTER TABLE clips ADD COLUMN has_audio INTEGER")
         except sqlite3.OperationalError:
             pass
+        try:
+            conn.execute("ALTER TABLE clips ADD COLUMN duration_seconds REAL")
+        except sqlite3.OperationalError:
+            pass
 
 
 @contextmanager
@@ -38,11 +42,12 @@ def get_connection(db_path: Path = DB_PATH) -> Iterator[sqlite3.Connection]:
 def upsert_clip(conn: sqlite3.Connection, clip: dict) -> None:
     conn.execute(
         """
-        INSERT INTO clips (id, theme, platform, source_url, creator, caption, score, num_comments, status)
-        VALUES (:id, :theme, :platform, :source_url, :creator, :caption, :score, :num_comments, :status)
+        INSERT INTO clips (id, theme, platform, source_url, creator, caption, score, num_comments, status, duration_seconds)
+        VALUES (:id, :theme, :platform, :source_url, :creator, :caption, :score, :num_comments, :status, :duration_seconds)
         ON CONFLICT(source_url) DO UPDATE SET
             score = excluded.score,
             num_comments = excluded.num_comments,
+            duration_seconds = excluded.duration_seconds,
             updated_at = datetime('now')
         """,
         clip,
@@ -60,6 +65,13 @@ def mark_clip_audio(conn: sqlite3.Connection, clip_id: str, has_audio: bool) -> 
     conn.execute(
         "UPDATE clips SET has_audio = ?, updated_at = datetime('now') WHERE id = ?",
         (1 if has_audio else 0, clip_id),
+    )
+
+
+def mark_clip_duration(conn: sqlite3.Connection, clip_id: str, duration_seconds: float) -> None:
+    conn.execute(
+        "UPDATE clips SET duration_seconds = ?, updated_at = datetime('now') WHERE id = ?",
+        (duration_seconds, clip_id),
     )
 
 

@@ -26,6 +26,12 @@ class Theme:
     clip_count: int
     title_template: str
     description_template: str
+    # Reddit RSS "top" time window (hour/day/week/month/year/all). Themes
+    # about a recurring but low-frequency event (e.g. a genuinely bad tackle)
+    # need a wider window than "week" to find good matches at all — a
+    # week-only scan can come back nearly empty some weeks even though
+    # plenty of iconic clips exist across a longer span (2026-08-18).
+    time_filter: str = "week"
 
 
 @dataclass
@@ -69,6 +75,7 @@ def load_themes() -> dict[str, Theme]:
             clip_count=entry.get("clip_count", 5),
             title_template=entry["title_template"],
             description_template=entry["description_template"],
+            time_filter=entry.get("time_filter", "week"),
         )
         themes[theme.name] = theme
     return themes

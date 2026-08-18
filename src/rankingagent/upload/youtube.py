@@ -71,12 +71,31 @@ def upload_video(
     contains_synthetic_media: bool = False,
     made_for_kids: bool = False,
     category_id: str = "24",  # Entertainment
+    publish_at: str | None = None,
 ) -> str:
     settings = load_settings()
     privacy_status = privacy_status or settings.youtube_privacy_status
 
+    # YouTube only honors `publishAt` when the video is uploaded as private —
+    # it then auto-flips to public at that timestamp. Force private here
+    # rather than silently ignoring an explicit publish_at with the wrong
+    # privacy_status.
+    if publish_at:
+        privacy_status = "private"
+
     creds = get_credentials()
     youtube = build("youtube", "v3", credentials=creds)
+
+    status = {
+        "privacyStatus": privacy_status,
+        "selfDeclaredMadeForKids": made_for_kids,
+        "containsSyntheticMedia": contains_synthetic_media,
+        "embeddable": True,
+        "publicStatsViewable": True,
+        "license": "youtube",
+    }
+    if publish_at:
+        status["publishAt"] = publish_at
 
     body = {
         "snippet": {
@@ -85,14 +104,7 @@ def upload_video(
             "tags": tags,
             "categoryId": category_id,
         },
-        "status": {
-            "privacyStatus": privacy_status,
-            "selfDeclaredMadeForKids": made_for_kids,
-            "containsSyntheticMedia": contains_synthetic_media,
-            "embeddable": True,
-            "publicStatsViewable": True,
-            "license": "youtube",
-        },
+        "status": status,
     }
 
     media = MediaFileUpload(str(video_path), chunksize=-1, resumable=True, mimetype="video/mp4")

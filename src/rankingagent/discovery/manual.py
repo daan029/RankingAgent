@@ -44,6 +44,7 @@ class ManualDiscoverySource:
                     caption=info.get("title") or "",
                     score=float(info.get("like_count") or 0),
                     num_comments=int(info.get("comment_count") or 0),
+                    duration_seconds=float(info["duration"]) if info.get("duration") else None,
                 )
             )
         return clips

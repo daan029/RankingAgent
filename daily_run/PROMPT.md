@@ -42,7 +42,7 @@ python -m rankingagent.cli discover-manual --theme <theme> --urls-file <path>
 invent one. If neither path yields any clips, stop and report rather than
 guessing.
 
-## 3. Review candidates for tone BEFORE selecting — do not skip this
+## 3. Review candidates for tone AND narrative fit BEFORE selecting — do not skip this
 
 RSS "top" posts are **not** pre-filtered for tone or appropriateness. This
 is a confirmed real issue, not a theoretical one: on 2026-08-14,
@@ -60,12 +60,28 @@ Read every candidate's `caption` (and creator/source_url if the caption is
 ambiguous). Reject anything that is: political or war-related, about a real
 injury/death/tragedy, sexual, or otherwise not lighthearted comedic chaos.
 
+**Also reject anything that doesn't actually match what the theme's title
+promises the viewer — a subreddit source is not itself proof of fit.**
+Confirmed real issue (2026-08-18): `karen_moments` clips were selected on
+chaos/score alone, but a Karen moment is specifically a filmed
+*confrontation/argument* — a caption with no dialogue or conflict doesn't
+qualify no matter how chaotic. Same day, `instant_karma` (sourced partly
+from r/IdiotsInCars) got titled "Instant Karma" but several selected clips
+were just generic bad-driving/dashcam footage with no actual comeuppance
+beat (wrongdoer doing something reckless and immediately paying for it) —
+"came from a related subreddit" is not the same as "matches the theme".
+Before selecting, ask for each candidate: does this specific clip deliver
+the thing the on-screen title will claim it delivers? If the honest answer
+for a candidate is "it's chaotic/relevant but not really that", reject it
+rather than filling the quota with adjacent-but-off content.
+
 ```
 python -m rankingagent.cli reject --theme <theme> --clip-ids <comma,separated,ids>
 ```
 
 Only proceed to step 4 once the remaining candidates are all genuinely
-on-brand.
+on-brand AND genuinely match the theme's specific narrative, not just its
+general subject area.
 
 ## 4. Select and rank
 

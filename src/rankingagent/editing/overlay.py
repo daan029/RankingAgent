@@ -118,12 +118,35 @@ def _split_highlight_segments(title_text: str) -> list[tuple[str, bool]]:
     return [(part, i % 2 == 1) for i, part in enumerate(parts) if part]
 
 
+TITLE_MAX_FONT_SIZE = 64
+TITLE_MIN_FONT_SIZE = 36
+TITLE_SAFE_MARGIN = 56  # each side, so the title never touches the frame edge
+
+
+def _fit_title_font(
+    draw: ImageDraw.ImageDraw, segments: list[tuple[str, bool]], max_width: float
+) -> tuple[ImageFont.ImageFont, float]:
+    """Shrink the title font from TITLE_MAX_FONT_SIZE until the full title
+    fits within max_width, down to TITLE_MIN_FONT_SIZE — long titles used to
+    render past the left/right frame edge at a fixed 64px."""
+    size = TITLE_MAX_FONT_SIZE
+    while size > TITLE_MIN_FONT_SIZE:
+        font = _load_font(size)
+        total_w = sum(draw.textlength(text, font=font) for text, _ in segments)
+        if total_w <= max_width:
+            return font, total_w
+        size -= 2
+    font = _load_font(TITLE_MIN_FONT_SIZE)
+    total_w = sum(draw.textlength(text, font=font) for text, _ in segments)
+    return font, total_w
+
+
 def _draw_title_bar(draw: ImageDraw.ImageDraw, title_text: str) -> None:
-    font = _load_font(64)
     prefix = "Ranking Best "
     segments = [(prefix, False)] + _split_highlight_segments(title_text)
 
-    total_w = sum(draw.textlength(text, font=font) for text, _ in segments)
+    max_width = WIDTH - 2 * TITLE_SAFE_MARGIN
+    font, total_w = _fit_title_font(draw, segments, max_width)
     x = (WIDTH - total_w) / 2
     y = TITLE_Y
     for text, highlighted in segments:

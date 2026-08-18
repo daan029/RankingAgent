@@ -15,6 +15,7 @@ class Clip:
     score: float
     num_comments: int = 0
     status: str = "discovered"
+    duration_seconds: float | None = None
 
     def as_db_row(self) -> dict:
         return {
@@ -27,6 +28,7 @@ class Clip:
             "score": self.score,
             "num_comments": self.num_comments,
             "status": self.status,
+            "duration_seconds": self.duration_seconds,
         }
 
 

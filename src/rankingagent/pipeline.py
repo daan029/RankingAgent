@@ -13,6 +13,7 @@ from rankingagent.db.store import (
     init_db,
     mark_clip_audio,
     mark_clip_downloaded,
+    mark_clip_duration,
     mark_clip_status,
     record_video,
     set_clip_reaction,
@@ -24,9 +25,9 @@ from rankingagent.discovery.reddit import RedditDiscoverySource
 from rankingagent.discovery.rss import RssDiscoverySource
 from rankingagent.download.downloader import download_clip
 from rankingagent.editing.assembler import render_video
-from rankingagent.editing.clip_processor import extract_preview_frames, has_audio_stream
-from rankingagent.editing.highlight import find_highlight_timestamp
-from rankingagent.ranking.scorer import select_and_rank
+from rankingagent.editing.clip_processor import extract_preview_frames, get_duration, has_audio_stream
+from rankingagent.editing.highlight import find_highlight_window
+from rankingagent.ranking.scorer import MAX_RAW_CLIP_SECONDS, select_and_rank
 from rankingagent.upload.youtube import upload_video
 
 logger = logging.getLogger(__name__)
@@ -38,7 +39,18 @@ def _download_pending(theme_name: str, no_check_certificate: bool) -> None:
 
     theme_dir = DOWNLOADS_DIR / theme_name
     downloaded = 0
+    skipped_too_long = 0
     for row in to_download:
+        # Metadata-known duration (from yt-dlp at discovery time) lets us
+        # skip the download entirely for clips that would be excluded at
+        # `select` anyway — no point pulling a 5-minute dashcam video just to
+        # throw it away (see MAX_RAW_CLIP_SECONDS / 2026-08-18 feedback).
+        if row["duration_seconds"] is not None and row["duration_seconds"] > MAX_RAW_CLIP_SECONDS:
+            with get_connection() as conn:
+                mark_clip_status(conn, row["id"], "too_long")
+            skipped_too_long += 1
+            continue
+
         local_path = download_clip(
             row["source_url"], row["id"], theme_dir, no_check_certificate=no_check_certificate
         )
@@ -49,6 +61,10 @@ def _download_pending(theme_name: str, no_check_certificate: bool) -> None:
                     mark_clip_audio(conn, row["id"], has_audio_stream(local_path))
                 except Exception:
                     logger.exception("Audio-stream probe failed for clip %s, assuming it has audio", row["id"])
+                try:
+                    mark_clip_duration(conn, row["id"], get_duration(local_path))
+                except Exception:
+                    logger.exception("Duration probe failed for clip %s", row["id"])
                 downloaded += 1
             else:
                 conn.execute(
@@ -56,7 +72,10 @@ def _download_pending(theme_name: str, no_check_certificate: bool) -> None:
                     (row["id"],),
                 )
 
-    logger.info("Downloaded %d/%d clips for theme '%s'", downloaded, len(to_download), theme_name)
+    logger.info(
+        "Downloaded %d/%d clips for theme '%s' (%d skipped as too long, >%.0fs)",
+        downloaded, len(to_download), theme_name, skipped_too_long, MAX_RAW_CLIP_SECONDS,
+    )
 
 
 def discover_and_download(theme_name: str) -> None:
@@ -133,6 +152,7 @@ def discover_via_rss(theme_name: str) -> None:
         subreddits=theme.subreddits,
         min_score=theme.min_score,
         limit=max(theme.clip_count * 4, 20),
+        time_filter=theme.time_filter,
     )
     logger.info("Discovered %d candidate clips", len(clips))
 
@@ -187,8 +207,8 @@ def preview_clip_frames(theme_name: str, count: int = 6) -> dict[str, list[dict]
     """For each currently-selected clip, sample `count` evenly-spaced frames
     across its full raw duration and return their paths/timestamps, so a
     reviewer can see where the fail/punchline actually happens before
-    `render` trims each clip down to CLIP_DURATION_SECONDS — the moment
-    isn't always at the very start of the raw clip. Run this after `select`
+    `render` trims each clip to its highlight window — the moment isn't
+    always at the very start of the raw clip. Run this after `select`
     and before `render`; pass the chosen start times to `render` via
     --clip-starts."""
     init_db()
@@ -213,32 +233,41 @@ def preview_clip_frames(theme_name: str, count: int = 6) -> dict[str, list[dict]
     return result
 
 
-def _auto_detect_clip_starts(
+def _auto_detect_clip_windows(
     ranked_clips: list[dict], clip_starts: dict[str, float], gemini_api_key: str
-) -> dict[str, float]:
-    """Ask Gemini where the fail/highlight moment is for every clip that
-    doesn't already have an explicit start in `clip_starts` — see
-    editing.highlight.find_highlight_timestamp. An explicit clip_starts
-    entry always wins (lets a caller override a specific clip); clips where
-    Gemini's call fails fall back to 0 rather than blocking the render."""
-    resolved = dict(clip_starts)
+) -> tuple[dict[str, float], dict[str, float]]:
+    """Ask Gemini for the (start, duration) highlight window of every clip
+    that doesn't already have an explicit start in `clip_starts` — see
+    editing.highlight.find_highlight_window. An explicit clip_starts entry
+    always wins (lets a caller override a specific clip's start; that clip
+    keeps the default fixed duration since we have no detected window for
+    it). Clips where Gemini's call fails fall back to start=0 at the default
+    duration rather than blocking the render."""
+    starts = dict(clip_starts)
+    durations: dict[str, float] = {}
     if not gemini_api_key:
         logger.warning("GEMINI_API_KEY not set — skipping auto highlight detection, all unset clips start at 0")
-        return resolved
+        return starts, durations
 
     for clip in ranked_clips:
-        if clip["id"] in resolved:
+        if clip["id"] in starts:
             continue
         try:
-            start = find_highlight_timestamp(Path(clip["local_path"]), gemini_api_key)
+            window = find_highlight_window(Path(clip["local_path"]), gemini_api_key)
         except Exception:
             logger.exception("Gemini highlight detection failed for clip %s", clip["id"])
-            start = None
+            window = None
 
-        resolved[clip["id"]] = start if start is not None else 0.0
-        logger.info("Auto-detected start for clip %s: %.1fs", clip["id"], resolved[clip["id"]])
+        start, duration = window if window is not None else (0.0, None)
+        starts[clip["id"]] = start
+        if duration is not None:
+            durations[clip["id"]] = duration
+        logger.info(
+            "Auto-detected window for clip %s: start=%.1fs duration=%s",
+            clip["id"], start, f"{duration:.1f}s" if duration is not None else "default",
+        )
 
-    return resolved
+    return starts, durations
 
 
 def render_video_for_theme(
@@ -267,15 +296,19 @@ def render_video_for_theme(
             set_clip_reaction(conn, clip_id, reaction)
 
     clip_starts = clip_starts or {}
+    clip_durations: dict[str, float] = {}
     if auto_highlight:
         settings = load_settings()
-        clip_starts = _auto_detect_clip_starts(ranked_clips, clip_starts, settings.gemini_api_key)
+        clip_starts, clip_durations = _auto_detect_clip_windows(ranked_clips, clip_starts, settings.gemini_api_key)
 
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     work_dir = RENDERS_DIR / theme.name / f"work_{timestamp}"
     output_path = RENDERS_DIR / theme.name / f"{timestamp}.mp4"
 
-    render_video(title_text, ranked_clips, reactions, work_dir, output_path, clip_starts=clip_starts)
+    render_video(
+        title_text, ranked_clips, reactions, work_dir, output_path,
+        clip_starts=clip_starts, clip_durations=clip_durations,
+    )
     logger.info("Rendered video for theme '%s' at %s", theme.name, output_path)
 
     _cleanup_after_render(theme.name, work_dir)
@@ -314,6 +347,7 @@ def upload_rendered_video(
     description: str,
     tags: list[str] | None = None,
     privacy_status: str | None = None,
+    publish_at: str | None = None,
 ) -> str:
     init_db()
     themes = load_themes()
@@ -327,6 +361,7 @@ def upload_rendered_video(
         description=description,
         tags=tags or [],
         privacy_status=privacy_status,
+        publish_at=publish_at,
     )
 
     with get_connection() as conn:
