@@ -19,6 +19,21 @@ for which of these three categories seems hottest right now. Also run
 when it was last used — avoid a theme published in the last 2 days if a
 reasonable alternative exists. Pick one theme for today.
 
+**Adding a brand-new theme**: default it to `search_queries` (site-wide
+search, `discovery.rss.RssDiscoverySource.discover_search`) as the primary
+source — NOT `subreddits` alone. Picking 1-2 subreddits by name-guess and
+hoping they fit a theme's specific narrative was tried repeatedly
+(2026-08-18/19: `amateur_stunts`, `worst_tackles`, `hero_moments`) and kept
+under-delivering or drifting off-topic; a handful of specific, unambiguous
+search phrases describing the exact moment (e.g. "hero saves", not just
+"hero") reaches across every subreddit where that content actually lives
+instead of gambling on 1-2 guessed ones. Keep `subreddits` in the config
+too, but only as the documented fallback for `discover`/`discover-manual` —
+`discover-rss` already prefers `search_queries` automatically when both are
+present. See [[theme-sourcing-and-fallback]] for the fuller history
+(sort=relevance fix, `after=` pagination, unquoted-phrase option) if the
+first pass comes up thin.
+
 ## 2. Discover and download clips
 
 Reddit's official API application for this project was denied (see the
@@ -136,18 +151,16 @@ You're writing **two** related but distinct pieces of text:
   claims, under 100 characters, include `#Shorts`. Can be longer/more
   specific than the on-screen title.
 
-The description MUST credit each of the 5 clips' original creators by their
-Reddit username (from the `creator` field in step 4's output) — this is a
-non-negotiable project requirement, not optional flavor text. Use a template
-like:
+**Do NOT put creator credits anywhere** — not in the description, not as a
+comment, not anywhere else. This was the original design but the user
+reversed it (2026-08-17, reconfirmed 2026-08-19): a per-clip credits block
+made the description an unreadable wall of text once YouTube's "more"
+expansion opened it on Shorts, and he'd rather add credit himself,
+somewhere, on his own terms. See the `copyright-risk-stance` memory entry.
+Keep the description short and clean, e.g.:
 
 ```
-Today's top 5 <theme>! All clips are credited to their original creators:
-u/<creator1>, u/<creator2>, u/<creator3>, u/<creator4>, u/<creator5>
-
-If you're the creator of a clip and want it removed, contact us at [email].
-
-#Shorts #<theme-related-tags>
+The 5 most <adjective> <theme> moments! #Shorts #<theme-related-tags>
 ```
 
 ## 8. Render the video

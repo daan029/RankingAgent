@@ -7,6 +7,7 @@ from pathlib import Path
 
 from rankingagent.config import DOWNLOADS_DIR, RENDERS_DIR, load_settings, load_themes
 from rankingagent.db.store import (
+    get_all_source_urls,
     get_clips_by_status,
     get_selected_clips,
     get_video_history,
@@ -22,7 +23,7 @@ from rankingagent.db.store import (
 )
 from rankingagent.discovery.manual import ManualDiscoverySource
 from rankingagent.discovery.reddit import RedditDiscoverySource
-from rankingagent.discovery.rss import RssDiscoverySource
+from rankingagent.discovery.rss import RssDiscoverySource, _normalize_url
 from rankingagent.download.downloader import download_clip
 from rankingagent.editing.assembler import render_video
 from rankingagent.editing.clip_processor import extract_preview_frames, get_duration, has_audio_stream
@@ -33,7 +34,7 @@ from rankingagent.upload.youtube import upload_video
 logger = logging.getLogger(__name__)
 
 
-def _download_pending(theme_name: str, no_check_certificate: bool) -> None:
+def _download_pending(theme_name: str, no_check_certificate: bool, max_raw_clip_seconds: float = MAX_RAW_CLIP_SECONDS) -> None:
     with get_connection() as conn:
         to_download = get_clips_by_status(conn, theme_name, "discovered")
 
@@ -45,7 +46,7 @@ def _download_pending(theme_name: str, no_check_certificate: bool) -> None:
         # skip the download entirely for clips that would be excluded at
         # `select` anyway — no point pulling a 5-minute dashcam video just to
         # throw it away (see MAX_RAW_CLIP_SECONDS / 2026-08-18 feedback).
-        if row["duration_seconds"] is not None and row["duration_seconds"] > MAX_RAW_CLIP_SECONDS:
+        if row["duration_seconds"] is not None and row["duration_seconds"] > max_raw_clip_seconds:
             with get_connection() as conn:
                 mark_clip_status(conn, row["id"], "too_long")
             skipped_too_long += 1
@@ -74,7 +75,7 @@ def _download_pending(theme_name: str, no_check_certificate: bool) -> None:
 
     logger.info(
         "Downloaded %d/%d clips for theme '%s' (%d skipped as too long, >%.0fs)",
-        downloaded, len(to_download), theme_name, skipped_too_long, MAX_RAW_CLIP_SECONDS,
+        downloaded, len(to_download), theme_name, skipped_too_long, max_raw_clip_seconds,
     )
 
 
@@ -101,7 +102,10 @@ def discover_and_download(theme_name: str) -> None:
         for clip in clips:
             upsert_clip(conn, clip.as_db_row())
 
-    _download_pending(theme.name, settings.ytdlp_no_check_certificate)
+    _download_pending(
+        theme.name, settings.ytdlp_no_check_certificate,
+        max_raw_clip_seconds=theme.max_raw_clip_seconds or MAX_RAW_CLIP_SECONDS,
+    )
 
 
 def discover_from_urls(theme_name: str, urls: list[str]) -> None:
@@ -125,7 +129,10 @@ def discover_from_urls(theme_name: str, urls: list[str]) -> None:
         for clip in clips:
             upsert_clip(conn, clip.as_db_row())
 
-    _download_pending(theme.name, settings.ytdlp_no_check_certificate)
+    _download_pending(
+        theme.name, settings.ytdlp_no_check_certificate,
+        max_raw_clip_seconds=theme.max_raw_clip_seconds or MAX_RAW_CLIP_SECONDS,
+    )
 
 
 def discover_via_rss(theme_name: str) -> None:
@@ -144,23 +151,52 @@ def discover_via_rss(theme_name: str) -> None:
     theme = themes[theme_name]
 
     settings = load_settings()
-    source = RssDiscoverySource(no_check_certificate=settings.ytdlp_no_check_certificate)
+    source_kwargs = {}
+    if theme.max_search_candidates is not None:
+        source_kwargs["max_candidates_per_search"] = theme.max_search_candidates
+    source = RssDiscoverySource(no_check_certificate=settings.ytdlp_no_check_certificate, **source_kwargs)
 
-    logger.info("RSS-discovering clips for theme '%s' from %s (this is slow by design)", theme.name, theme.subreddits)
-    clips = source.discover(
-        theme_name=theme.name,
-        subreddits=theme.subreddits,
-        min_score=theme.min_score,
-        limit=max(theme.clip_count * 4, 20),
-        time_filter=theme.time_filter,
-    )
+    with get_connection() as conn:
+        known_urls = {_normalize_url(u) for u in get_all_source_urls(conn)}
+
+    if theme.search_queries:
+        logger.info(
+            "RSS-discovering clips for theme '%s' via site-wide search %s (this is slow by design)",
+            theme.name, theme.search_queries,
+        )
+        clips = source.discover_search(
+            theme_name=theme.name,
+            queries=theme.search_queries,
+            min_score=theme.min_score,
+            limit=max(theme.clip_count * 4, 20),
+            time_filter=theme.time_filter,
+            max_age_days=theme.search_max_age_days,
+            known_urls=known_urls,
+            exact_phrase=theme.search_exact_phrase,
+            search_pages=theme.search_pages,
+        )
+    else:
+        logger.info(
+            "RSS-discovering clips for theme '%s' from %s (this is slow by design)", theme.name, theme.subreddits
+        )
+        clips = source.discover(
+            theme_name=theme.name,
+            subreddits=theme.subreddits,
+            min_score=theme.min_score,
+            limit=max(theme.clip_count * 4, 20),
+            time_filter=theme.time_filter,
+            known_urls=known_urls,
+        )
     logger.info("Discovered %d candidate clips", len(clips))
 
     with get_connection() as conn:
         for clip in clips:
             upsert_clip(conn, clip.as_db_row())
 
-    _download_pending(theme.name, settings.ytdlp_no_check_certificate)
+    _download_pending(
+        theme.name, settings.ytdlp_no_check_certificate,
+        max_raw_clip_seconds=theme.max_raw_clip_seconds or MAX_RAW_CLIP_SECONDS,
+    )
 
 
 def list_candidates(theme_name: str) -> list[dict]:
@@ -197,7 +233,10 @@ def select_top_clips(theme_name: str) -> list[dict]:
     theme = themes[theme_name]
 
     with get_connection() as conn:
-        ranked = select_and_rank(conn, theme.name, count=theme.clip_count)
+        ranked = select_and_rank(
+            conn, theme.name, count=theme.clip_count,
+            max_raw_clip_seconds=theme.max_raw_clip_seconds or MAX_RAW_CLIP_SECONDS,
+        )
 
     logger.info("Selected %d clips for theme '%s'", len(ranked), theme.name)
     return ranked
@@ -234,40 +273,44 @@ def preview_clip_frames(theme_name: str, count: int = 6) -> dict[str, list[dict]
 
 
 def _auto_detect_clip_windows(
-    ranked_clips: list[dict], clip_starts: dict[str, float], gemini_api_key: str
-) -> tuple[dict[str, float], dict[str, float]]:
-    """Ask Gemini for the (start, duration) highlight window of every clip
-    that doesn't already have an explicit start in `clip_starts` — see
-    editing.highlight.find_highlight_window. An explicit clip_starts entry
-    always wins (lets a caller override a specific clip's start; that clip
-    keeps the default fixed duration since we have no detected window for
-    it). Clips where Gemini's call fails fall back to start=0 at the default
-    duration rather than blocking the render."""
+    ranked_clips: list[dict], clip_starts: dict[str, float], gemini_api_key: str, max_highlight_seconds: float | None = None
+) -> tuple[dict[str, float], dict[str, float], dict[str, float]]:
+    """Ask Gemini for the (start, duration, vertical_focus) highlight window
+    of every clip that doesn't already have an explicit start in
+    `clip_starts` — see editing.highlight.find_highlight_window. An explicit
+    clip_starts entry always wins (lets a caller override a specific clip's
+    start; that clip keeps the default fixed duration/centered crop since we
+    have no detected window for it). Clips where Gemini's call fails fall
+    back to start=0 at the default duration/centered crop rather than
+    blocking the render."""
     starts = dict(clip_starts)
     durations: dict[str, float] = {}
+    vertical_focus: dict[str, float] = {}
     if not gemini_api_key:
         logger.warning("GEMINI_API_KEY not set — skipping auto highlight detection, all unset clips start at 0")
-        return starts, durations
+        return starts, durations, vertical_focus
 
     for clip in ranked_clips:
         if clip["id"] in starts:
             continue
         try:
-            window = find_highlight_window(Path(clip["local_path"]), gemini_api_key)
+            kwargs = {"max_duration": max_highlight_seconds} if max_highlight_seconds is not None else {}
+            window = find_highlight_window(Path(clip["local_path"]), gemini_api_key, **kwargs)
         except Exception:
             logger.exception("Gemini highlight detection failed for clip %s", clip["id"])
             window = None
 
-        start, duration = window if window is not None else (0.0, None)
+        start, duration, focus = window if window is not None else (0.0, None, 0.5)
         starts[clip["id"]] = start
         if duration is not None:
             durations[clip["id"]] = duration
+        vertical_focus[clip["id"]] = focus
         logger.info(
-            "Auto-detected window for clip %s: start=%.1fs duration=%s",
-            clip["id"], start, f"{duration:.1f}s" if duration is not None else "default",
+            "Auto-detected window for clip %s: start=%.1fs duration=%s vertical_focus=%.2f",
+            clip["id"], start, f"{duration:.1f}s" if duration is not None else "default", focus,
         )
 
-    return starts, durations
+    return starts, durations, vertical_focus
 
 
 def render_video_for_theme(
@@ -276,6 +319,7 @@ def render_video_for_theme(
     title_text: str | None = None,
     clip_starts: dict[str, float] | None = None,
     auto_highlight: bool = True,
+    clip_captions: dict[str, str] | None = None,
 ) -> Path:
     init_db()
     themes = load_themes()
@@ -297,9 +341,12 @@ def render_video_for_theme(
 
     clip_starts = clip_starts or {}
     clip_durations: dict[str, float] = {}
+    clip_vertical_focus: dict[str, float] = {}
     if auto_highlight:
         settings = load_settings()
-        clip_starts, clip_durations = _auto_detect_clip_windows(ranked_clips, clip_starts, settings.gemini_api_key)
+        clip_starts, clip_durations, clip_vertical_focus = _auto_detect_clip_windows(
+            ranked_clips, clip_starts, settings.gemini_api_key, max_highlight_seconds=theme.max_highlight_seconds
+        )
 
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     work_dir = RENDERS_DIR / theme.name / f"work_{timestamp}"
@@ -307,7 +354,8 @@ def render_video_for_theme(
 
     render_video(
         title_text, ranked_clips, reactions, work_dir, output_path,
-        clip_starts=clip_starts, clip_durations=clip_durations,
+        clip_starts=clip_starts, clip_durations=clip_durations, clip_vertical_focus=clip_vertical_focus,
+        clip_captions=clip_captions, force_opening_music=theme.force_opening_music,
     )
     logger.info("Rendered video for theme '%s' at %s", theme.name, output_path)
 

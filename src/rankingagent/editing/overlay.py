@@ -20,17 +20,30 @@ WATERMARK_TOP = HEIGHT - WATERMARK_SIZE - WATERMARK_MARGIN
 # YouTube Shorts' own UI (back button, follow/like/comment/share rail,
 # caption/username) covers the top and bottom of the frame, so text needs to
 # sit clear of both, with blurred bands behind it (top band contains the
-# title; bottom band sits just above the watermark) so the burned-in text
-# stays legible over busy footage. clip_processor.overlay_frame_on_clip
+# title; bottom band sits flush against the bottom edge) so the burned-in
+# text stays legible over busy footage. clip_processor.overlay_frame_on_clip
 # blurs the video itself in these two bands; these constants are shared
 # between the two so the blur and the text placement always line up.
 SIDEBAR_SHIFT_DOWN = int(HEIGHT * 0.20)
 TITLE_SHIFT_DOWN = int(HEIGHT * 0.156)  # a bit less than the sidebar's shift
 TITLE_Y = 60 + TITLE_SHIFT_DOWN - int(HEIGHT * 0.05)
 SIDEBAR_START_Y = 260 + SIDEBAR_SHIFT_DOWN
-TOP_BLUR_HEIGHT = 480
-BOTTOM_BLUR_HEIGHT = 260
-BOTTOM_BLUR_Y = WATERMARK_TOP - BOTTOM_BLUR_HEIGHT
+# Reduced from 480/260 (2026-08-19 user request): a full-frame source clip
+# (e.g. a pre-composed dual-camera dashcam video with no dead space at the
+# edges) was having meaningful content — not just empty background — hidden
+# under the bands. Kept tall enough for the title text (bottom edge ~344px
+# at TITLE_MAX_FONT_SIZE) and the subscribe CTA to still sit fully inside
+# their respective bands with margin.
+TOP_BLUR_HEIGHT = 380
+BOTTOM_BLUR_HEIGHT = 170
+# Anchored to the true bottom edge, not to the watermark (2026-08-19 user
+# request) — previously `WATERMARK_TOP - BOTTOM_BLUR_HEIGHT` left an
+# unblurred ~40px strip below the band (between it and the frame edge,
+# below the watermark), which read as a rendering glitch rather than
+# deliberate framing. The watermark now sits *inside* this band instead of
+# just below it — see _draw_subscribe_cta for how the CTA text avoids
+# colliding with it.
+BOTTOM_BLUR_Y = HEIGHT - BOTTOM_BLUR_HEIGHT
 
 # Windows system fonts, in order of preference. This project is Windows-only
 # (runs on the user's home laptop), so hardcoded paths are fine here.
@@ -174,6 +187,107 @@ def _draw_sidebar(draw: ImageDraw.ImageDraw, ranked_clips: list[dict], revealed_
                 _draw_mixed_text(draw, (x_number + 90, y + 8), reaction, reaction_font, WHITE, outline_width=4)
 
 
+SUBSCRIBE_CTA_TEXT = "SUBSCRIBE to see our next video!"
+SUBSCRIBE_CTA_MAX_FONT_SIZE = 44
+SUBSCRIBE_CTA_MIN_FONT_SIZE = 26
+# Near the top of the bottom blur band rather than vertically centered in it
+# (2026-08-19 user request — centered read as too close to the bottom
+# edge). The band sits flush against the true bottom edge (see
+# BOTTOM_BLUR_Y), so there's slack below the text down to the frame edge.
+SUBSCRIBE_CTA_Y = BOTTOM_BLUR_Y + 42
+SUBSCRIBE_ICON_SIZE = 44  # width; height is 0.7x this, YouTube play-button aspect
+
+
+def _fit_single_line_font(
+    draw: ImageDraw.ImageDraw, text: str, max_width: float, max_size: int, min_size: int
+) -> ImageFont.ImageFont:
+    size = max_size
+    while size > min_size:
+        font = _load_font(size)
+        if draw.textlength(text, font=font) <= max_width:
+            return font
+        size -= 2
+    return _load_font(min_size)
+
+
+def _draw_play_icon(draw: ImageDraw.ImageDraw, x: float, y_center: float) -> float:
+    """Small red rounded-rect + white play-triangle (generic 'watch/
+    subscribe' shorthand, not a reproduction of any brand's actual logo
+    asset) to the left of the subscribe CTA text (2026-08-19 user request).
+    Returns the x position where text should start after it."""
+    w = SUBSCRIBE_ICON_SIZE
+    h = w * 0.7
+    top = y_center - h / 2
+    draw.rounded_rectangle([x, top, x + w, top + h], radius=6, fill=BRAND_RED)
+    tri = [(x + w * 0.38, top + h * 0.2), (x + w * 0.38, top + h * 0.8), (x + w * 0.74, top + h * 0.5)]
+    draw.polygon(tri, fill=WHITE)
+    return x + w + 12
+
+
+def _draw_subscribe_cta(draw: ImageDraw.ImageDraw) -> None:
+    """Ask-for-subscribe CTA, shown only once the climax (#1) clip is
+    revealed — i.e. only on the final segment, when engagement peaks
+    (2026-08-19 user request). Sits in the bottom blur band. Now that the
+    band is anchored to the true bottom edge (see BOTTOM_BLUR_Y) it overlaps
+    the watermark's reserved bottom-right corner, so the CTA is left-aligned
+    and width-capped to stay clear of that corner instead of centered across
+    the full width."""
+    watermark_zone_w = WATERMARK_SIZE + WATERMARK_MARGIN
+    icon_zone_w = SUBSCRIBE_ICON_SIZE + 12
+    max_width = WIDTH - watermark_zone_w - TITLE_SAFE_MARGIN - icon_zone_w
+    font = _fit_single_line_font(
+        draw, SUBSCRIBE_CTA_TEXT, max_width, SUBSCRIBE_CTA_MAX_FONT_SIZE, SUBSCRIBE_CTA_MIN_FONT_SIZE
+    )
+    ascent, descent = font.getmetrics()
+    text_x = _draw_play_icon(draw, TITLE_SAFE_MARGIN, SUBSCRIBE_CTA_Y)
+    y = SUBSCRIBE_CTA_Y - (ascent + descent) / 2
+    _draw_outlined_text(draw, (text_x, y), SUBSCRIBE_CTA_TEXT, font, BRAND_RED)
+
+
+CLIP_CAPTION_MAX_FONT_SIZE = 40
+CLIP_CAPTION_MIN_FONT_SIZE = 24
+
+
+def _wrap_two_lines(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, max_width: float) -> list[str]:
+    """Greedy word-wrap into at most 2 lines — good enough for a short
+    factual caption, not meant for arbitrary-length text."""
+    words = text.split()
+    line1 = ""
+    i = 0
+    while i < len(words):
+        candidate = (line1 + " " + words[i]).strip()
+        if draw.textlength(candidate, font=font) > max_width and line1:
+            break
+        line1 = candidate
+        i += 1
+    line2 = " ".join(words[i:])
+    return [line1, line2] if line2 else [line1]
+
+
+def _draw_clip_caption(draw: ImageDraw.ImageDraw, text: str) -> None:
+    """Short factual caption for a specific clip's segment (e.g. "Girl meets
+    surgeon who saved her life 3 years ago") — plain white, distinct from
+    the brand-red subscribe CTA, since it's information rather than an ask.
+    Shown only during that one clip's own segment, not cumulatively. Sits in
+    the same bottom-band position as the CTA; the two never co-occur today
+    (the CTA only shows on the climax segment) so no stacking logic exists
+    yet — revisit if a future theme needs both on the same segment."""
+    watermark_zone_w = WATERMARK_SIZE + WATERMARK_MARGIN
+    max_width = WIDTH - watermark_zone_w - TITLE_SAFE_MARGIN
+    font = _fit_single_line_font(draw, text, max_width, CLIP_CAPTION_MAX_FONT_SIZE, CLIP_CAPTION_MIN_FONT_SIZE)
+    lines = [text]
+    if draw.textlength(text, font=font) > max_width:
+        lines = _wrap_two_lines(draw, text, font, max_width)
+
+    ascent, descent = font.getmetrics()
+    line_h = ascent + descent
+    total_h = line_h * len(lines)
+    y = SUBSCRIBE_CTA_Y - total_h / 2
+    for line in lines:
+        _draw_outlined_text(draw, (TITLE_SAFE_MARGIN, y), line, font, WHITE)
+        y += line_h
+
+
 def _draw_watermark(canvas: Image.Image) -> None:
     if not WATERMARK_PATH.exists():
         return
@@ -186,16 +300,25 @@ def _draw_watermark(canvas: Image.Image) -> None:
     canvas.alpha_composite(logo, (x, y))
 
 
-def render_overlay_frame(title_text: str, ranked_clips: list[dict], revealed_count: int) -> Image.Image:
+def render_overlay_frame(
+    title_text: str, ranked_clips: list[dict], revealed_count: int, current_caption: str | None = None
+) -> Image.Image:
     """Build a transparent 1080x1920 PNG frame: title bar (sits in the
     blurred top band) + cumulative sidebar reveal state (clips with
     reveal_index < revealed_count show their reaction, on normal
-    unblurred video) + permanent watermark just below the blurred bottom
-    band, meant to be composited over one video segment for its full
-    duration."""
+    unblurred video) + a subscribe CTA in the blurred bottom band once the
+    climax (#1) clip is revealed, OR `current_caption` (a short factual
+    caption for whichever clip is on screen *this* segment specifically,
+    not cumulative — 2026-08-19 user request) when one is supplied for this
+    segment + permanent watermark just below that band, meant to be
+    composited over one video segment for its full duration."""
     canvas = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
     draw = ImageDraw.Draw(canvas)
     _draw_title_bar(draw, title_text)
     _draw_sidebar(draw, ranked_clips, revealed_count)
+    if revealed_count >= len(ranked_clips):
+        _draw_subscribe_cta(draw)
+    elif current_caption:
+        _draw_clip_caption(draw, current_caption)
     _draw_watermark(canvas)
     return canvas

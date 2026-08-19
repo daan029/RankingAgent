@@ -29,16 +29,65 @@ themes:
     subreddits:
       - instantkarma
       - IdiotsInCars
+    # Site-wide search (not scoped to any subreddit) — karma content lives
+    # across dozens of subs (r/JusticeServed, r/PublicFreakout, etc), not
+    # just r/instantkarma, so keyword search fills the pool better than a
+    # fixed subreddit list. `subreddits` above is kept as a fallback for
+    # `discover`/`discover-manual`; `discover-rss` prefers search_queries
+    # when set (2026-08-18).
+    search_queries:
+      - "instant karma"
+      - "karma caught on camera"
+      - "well deserved karma"
+      - "instant karma fail"
+      - "instant justice caught"
+    # Reddit's search t= only offers week/month/year/all — "year" is the
+    # narrowest bucket that's a superset of the desired 6-month window;
+    # search_max_age_days then trims it down client-side to exactly that
+    # (2026-08-18 user request: 6 months instead of week, sorted by
+    # popularity — sort=top is already the default in _fetch_search).
+    time_filter: year
+    search_max_age_days: 182
     # Lower than the other themes' min_score on purpose: the clips that
     # actually stay under the 15s raw-duration cap (see
     # ranking.scorer.MAX_RAW_CLIP_SECONDS) skew toward lower community score
     # than the longer, more dramatic dashcam posts — a 1000 floor left too
     # few eligible candidates after the duration filter (2026-08-18).
-    min_score: 300
+    min_score: 200
     clip_count: 5
     title_template: "TOP 5 INSTANT KARMA MOMENTS ⚖️ #{episode} | #Shorts"
     description_template: >
       The 5 most satisfying instant karma moments this week! Clips via
+      Reddit, all credit to the original creators (see below).
+
+  - name: worst_mailman
+    on_screen_label: "Worst Mailmen"
+    subreddits:
+      - IdiotsInCars
+      - PublicFreakout
+    # Narrow niche — no single subreddit is dedicated to this, so lean on
+    # site-wide search (see instant_karma above for why/how).
+    search_queries:
+      - "mailman fail"
+      - "delivery driver caught"
+      - "package throw"
+    min_score: 300
+    # Low-frequency event like worst_tackles — widen the window so a scan
+    # isn't stuck with only this week's (likely empty) results.
+    time_filter: year
+    # Doorbell/porch-cam clips need the driver to walk up, act (throw the
+    # package, trip, argue, etc.), and leave — that raw footage structurally
+    # runs longer before/around the moment than a quick fails clip, so both
+    # caps are raised above the site defaults (60s raw / 15s highlight as of
+    # 2026-08-19) (2026-08-19 user request). This video is allowed to end up
+    # a bit longer overall than other themes' videos as a result — that's
+    # fine.
+    max_raw_clip_seconds: 90
+    max_highlight_seconds: 22
+    clip_count: 5
+    title_template: "TOP 5 WORST MAILMEN 📦 #{episode} | #Shorts"
+    description_template: >
+      The 5 worst mailman/delivery driver moments caught on camera! Clips via
       Reddit, all credit to the original creators (see below).
 
   - name: worst_tackles
@@ -46,19 +95,94 @@ themes:
     subreddits:
       - footballhighlights
       - soccer
+    # Site-wide search (not scoped to a subreddit) — user feedback
+    # (2026-08-19): pinning to r/footballhighlights + r/soccer's "top" feed
+    # skews toward goals/news because a bad tackle is inherently less viral
+    # than a golazo (see [[clip-selection-narrative-fit]]), but searching
+    # "worst tackle" directly on Reddit surfaces plenty of real tackle clips
+    # that never rank as a subreddit's own top post. `subreddits` above stays
+    # as a fallback for `discover`/`discover-manual`; `discover-rss` prefers
+    # `search_queries` when set.
+    # 2026-08-19: a real run against "worst tackle" (+ variants) found only
+    # ~2 extractable-video clips out of ~70 candidates checked across
+    # several queries — two compounding problems, not scarcity:
+    # 1. discovery/rss.py's _fetch_search used sort=top instead of sort=
+    #    relevance (a bug — sort=relevance was already identified as correct
+    #    in a 2026-08-18 investigation but never actually wired in). Fixed.
+    # 2. "tackle" alone is ambiguous — in NFL contexts it's an offensive-line
+    #    position ("worst tackle in the league" = a bad lineman, not a foul),
+    #    and those discussion/stat posts drowned out genuine soccer
+    #    foul-tackle clips even after the sort fix. Queries below are
+    #    soccer-specific phrasing that essentially never appears in NFL
+    #    position discussions, to cut that noise instead of just widening
+    #    the net further.
+    search_queries:
+      - "reckless tackle"
+      - "tackle red card"
+      - "two footed tackle"
+      - "horror tackle"
+    # 2026-08-19 (round 3): search.rss caps each request at ~25 results, but
+    # a live test proved `after=t3_<id>` pagination works (page 2 returned
+    # 25 entirely new posts) — search_pages=2 now walks 2 pages (~50 raw
+    # results) per query instead of just the first 25. Also dropped the
+    # exact-phrase quoting (search_exact_phrase: false) per user question
+    # about whether that restriction was hurting recall — trades precision
+    # for recall; downstream min_score/yt-dlp filtering still rejects
+    # whatever doesn't pan out.
+    search_pages: 2
+    search_exact_phrase: false
+    max_search_candidates: 25
     # Lowered from 800 (2026-08-18): this week's actual top-of-week posts in
     # both subreddits are dominated by goals/news, not tackles specifically —
     # a bad-tackle clip is inherently less viral than a golazo, so a high
     # score floor was filtering out the very content this theme needs before
     # it's even seen. See [[clip-selection-narrative-fit]].
     min_score: 300
-    # A genuinely bad/dirty tackle is a low-frequency event — scanning only
-    # this week's top posts came back with zero actual tackle clips twice in
-    # a row (2026-08-18). User's call: it doesn't need to be from this week,
-    # older iconic clips are fine (better, even). "year" instead of "week".
-    time_filter: year
+    # Widened from "year" to "all" (2026-08-19, see max_search_candidates
+    # note above) — a genuinely bad/dirty tackle is a low-frequency event,
+    # and even "year" was still excluding older iconic clips.
+    time_filter: all
     clip_count: 5
     title_template: "TOP 5 WORST TACKLES 🟥 #{episode} | #Shorts"
     description_template: >
       The 5 worst tackles this week! Clips via Reddit, all credit to the
       original creators (see below).
+
+  - name: hero_moments
+    on_screen_label: "Hero Moments"
+    # Site-wide search as the PRIMARY source (2026-08-19 user correction —
+    # a new theme should default to this, not to picking 1-2 subreddits by
+    # name-guess and hoping they fit; see [[theme-sourcing-and-fallback]]).
+    # `subreddits` below is kept only as the `discover`/`discover-manual`
+    # fallback, same pattern as instant_karma/worst_mailman/worst_tackles.
+    search_queries:
+      - "hero saves"
+      - "runs in to save"
+      - "jumps in to save"
+      - "saved his life"
+    subreddits:
+      - HumansBeingBros
+      - MadeMeSmile
+    # A genuine "hero saves someone from danger" clip is a low-frequency
+    # event — same reasoning as worst_tackles/worst_mailman: widen the
+    # window instead of restricting to this week's top posts only.
+    time_filter: year
+    min_score: 500
+    clip_count: 5
+    # 2026-08-19 user feedback on the first real render: (1) the default
+    # 15s highlight cap cut off before the actual rescue moment on a 43s
+    # raw clip — raised so there's room for a longer wind-up/payoff; (2)
+    # the forced opening-clip music bed (see video-pipeline-gotchas) felt
+    # tonally wrong under a real rescue's own ambient sound, unlike
+    # comedic fail content. Also: "moet goed gekeken worden wanneer je ze
+    # moet stoppen" — for this theme, always sanity-check Gemini's detected
+    # window against the raw clip before rendering, don't trust it blindly;
+    # some rescues take a while to actually happen.
+    max_highlight_seconds: 25
+    force_opening_music: false
+    title_template: "TOP 5 HERO MOMENTS 🦸 #{episode} | #Shorts"
+    # No credits block — see [[copyright-risk-stance]], user handles
+    # crediting himself, not the pipeline.
+    description_template: >
+      The 5 most heroic rescue moments caught on camera! #Shorts #hero
+      #rescue

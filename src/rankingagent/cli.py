@@ -93,6 +93,13 @@ def main() -> None:
         action="store_true",
         help="Skip the automatic Gemini highlight-moment detection (clips default to start=0 unless in --clip-starts)",
     )
+    render_parser.add_argument(
+        "--clip-captions",
+        default=None,
+        help='JSON object mapping clip id -> a short factual caption shown only during that clip\'s own segment '
+             '(not the climax, which uses the subscribe CTA instead), e.g. \'{"reddit_abc123": "Girl meets '
+             'surgeon who saved her life 3 years ago"}\'.',
+    )
 
     upload_parser = subparsers.add_parser("upload", help="Upload a rendered video to YouTube")
     upload_parser.add_argument("--theme", required=True, help="Theme name from config/themes.yaml")
@@ -146,9 +153,10 @@ def main() -> None:
     elif args.command == "render":
         reactions = json.loads(args.reactions)
         clip_starts = json.loads(args.clip_starts) if args.clip_starts else None
+        clip_captions = json.loads(args.clip_captions) if args.clip_captions else None
         output_path = render_video_for_theme(
             args.theme, reactions, title_text=args.title_text, clip_starts=clip_starts,
-            auto_highlight=not args.no_auto_highlight,
+            auto_highlight=not args.no_auto_highlight, clip_captions=clip_captions,
         )
         print(str(output_path))
     elif args.command == "upload":

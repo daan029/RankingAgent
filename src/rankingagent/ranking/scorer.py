@@ -6,12 +6,20 @@ import sqlite3
 
 from rankingagent.db.store import set_clip_rank
 
-# Raw clips longer than this are excluded from selection entirely — Gemini's
-# highlight-window detection (editing.highlight) is far less reliable the
-# longer it has to search a clip for the actual moment, which was regularly
-# producing segments where "nothing happens" (2026-08-18 feedback). Clips
-# under this length rarely need precise cropping at all.
-MAX_RAW_CLIP_SECONDS = 15.0
+# Raw clips longer than this are excluded from selection entirely. Originally
+# 15.0 (2026-08-18), on the theory that Gemini's highlight-window detection
+# (editing.highlight) gets less reliable the longer it has to search a clip.
+# Raised to 60.0 (2026-08-19) after that cap turned out to be the dominant
+# bottleneck on yield, not a Gemini reliability problem: a db check on
+# `instant_karma` showed 27 of 36 candidate clips were being discarded here
+# purely for raw length, while `render` already asks Gemini for the precise
+# highlight window on every clip regardless of raw length and clamps the
+# *output* segment to a short duration (editing.highlight.MAX_CLIP_DURATION,
+# theme-overridable) — so a longer raw source no longer means a longer or
+# worse final clip, just fewer real candidates thrown away before Gemini
+# even gets a look. Most real Reddit fail/freakout clips run well past 15s
+# raw even when the actual moment is brief.
+MAX_RAW_CLIP_SECONDS = 60.0
 
 
 def get_used_clip_ids(conn: sqlite3.Connection) -> set[str]:
@@ -24,7 +32,9 @@ def get_used_clip_ids(conn: sqlite3.Connection) -> set[str]:
     return used
 
 
-def select_and_rank(conn: sqlite3.Connection, theme_name: str, count: int = 5) -> list[dict]:
+def select_and_rank(
+    conn: sqlite3.Connection, theme_name: str, count: int = 5, max_raw_clip_seconds: float = MAX_RAW_CLIP_SECONDS
+) -> list[dict]:
     used_ids = get_used_clip_ids(conn)
 
     candidates = conn.execute(
@@ -35,7 +45,7 @@ def select_and_rank(conn: sqlite3.Connection, theme_name: str, count: int = 5) -
     eligible = [
         row for row in candidates
         if row["id"] not in used_ids
-        and not (row["duration_seconds"] is not None and row["duration_seconds"] > MAX_RAW_CLIP_SECONDS)
+        and not (row["duration_seconds"] is not None and row["duration_seconds"] > max_raw_clip_seconds)
     ]
 
     # At most one clip without audio per rendered video (see

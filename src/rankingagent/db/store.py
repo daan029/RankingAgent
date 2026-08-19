@@ -115,6 +115,16 @@ def is_known_source_url(conn: sqlite3.Connection, source_url: str) -> bool:
     return row is not None
 
 
+def get_all_source_urls(conn: sqlite3.Connection) -> set[str]:
+    """Every source_url ever discovered (any theme, any status) — used to
+    skip already-seen posts up front during a fresh discovery run, so a
+    part-2 video never re-checks (or re-selects) a clip a previous video
+    already used. Global, not per-theme: a clip used for one theme shouldn't
+    resurface in another either."""
+    rows = conn.execute("SELECT source_url FROM clips").fetchall()
+    return {row["source_url"] for row in rows}
+
+
 def record_video(
     conn: sqlite3.Connection,
     theme: str,

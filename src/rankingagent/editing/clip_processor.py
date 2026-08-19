@@ -50,12 +50,68 @@ def _audio_edge_fade_filter(input_path: Path, start: float, duration: float) -> 
     )
 
 
+def get_dimensions(input_path: Path) -> tuple[int, int]:
+    result = subprocess.run(
+        [
+            "ffprobe", "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=width,height",
+            "-of", "csv=s=x:p=0",
+            str(input_path),
+        ],
+        check=True, capture_output=True, text=True,
+    )
+    width_str, height_str = result.stdout.strip().split("x")
+    return int(width_str), int(height_str)
+
+
+# Target the midpoint of the "safe" vertical band between the two blurred
+# bands (not the raw frame center — TOP_BLUR_HEIGHT and BOTTOM_BLUR_HEIGHT
+# aren't equal, so those aren't the same point) when shifting the crop
+# toward a detected subject position.
+_SAFE_ZONE_CENTER_Y = (TOP_BLUR_HEIGHT + (HEIGHT - BOTTOM_BLUR_HEIGHT)) / 2
+
+
+def _crop_filter(input_path: Path, vertical_focus: float) -> str:
+    """Named-parameter crop so an omitted x still defaults to ffmpeg's own
+    centered expression — only y is ever overridden here. `vertical_focus`
+    (0.0=top..1.0=bottom of the *source* frame, from Gemini) shifts the crop
+    window so that point lands at the safe-zone center in the 1080x1920
+    output instead of the previous blind center-crop, which could put the
+    subject behind the top/bottom blurred bands for an off-center source
+    framing (2026-08-19 user request). Exactly 0.5 (the default used when no
+    real detection is available — see editing.highlight.DEFAULT_VERTICAL_
+    FOCUS) is treated as "no signal" and falls back to the original centered
+    crop untouched, so renders without a real subject-position reading don't
+    change behavior."""
+    if vertical_focus == 0.5:
+        return f"crop=w={WIDTH}:h={HEIGHT}"
+    try:
+        src_w, src_h = get_dimensions(input_path)
+    except Exception:
+        return f"crop=w={WIDTH}:h={HEIGHT}"
+
+    scale = max(WIDTH / src_w, HEIGHT / src_h)
+    scaled_h = src_h * scale
+    excess_h = scaled_h - HEIGHT
+    if excess_h <= 1:
+        # Source is already narrow enough (or narrower) that height isn't
+        # cropped at all — no room to shift, vertical_focus is moot here.
+        return f"crop=w={WIDTH}:h={HEIGHT}"
+
+    offset_y = vertical_focus * scaled_h - _SAFE_ZONE_CENTER_Y
+    offset_y = max(0.0, min(excess_h, offset_y))
+    return f"crop=w={WIDTH}:h={HEIGHT}:y={int(round(offset_y))}"
+
+
 def normalize_clip(
     input_path: Path,
     output_path: Path,
     duration: float = 3.5,
     start: float = 0.0,
     force_music_bed: bool = False,
+    vertical_focus: float = 0.5,
+    manual_vf: str | None = None,
 ) -> None:
     """Scale+crop a raw clip to fill 1080x1920 and trim it to `duration`
     seconds starting at `start` seconds (see extract_preview_frames — the
@@ -72,12 +128,25 @@ def normalize_clip(
     than replacing it, so a real-but-quiet/short audio stream still gets a
     music bed without losing the source sound. Every segment's audio gets a
     short edge fade (AUDIO_EDGE_FADE_SECONDS) so the later concat doesn't
-    produce an audible click at each cut."""
+    produce an audible click at each cut. `vertical_focus` (0.0=top..
+    1.0=bottom, from Gemini via editing.highlight.find_highlight_window)
+    shifts the crop toward the detected subject position instead of always
+    center-cropping — see _crop_filter."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    vf = (
-        f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,"
-        f"crop={WIDTH}:{HEIGHT},setsar=1"
-    )
+    if manual_vf is not None:
+        # Full manual override of the scale+crop filter chain — for a
+        # one-off case _crop_filter's automatic logic can't handle, e.g. a
+        # source clip whose scaled dimensions exactly match WIDTHxHEIGHT
+        # (no crop slack at all) but still needs to be shifted, which
+        # requires zooming in past the normal fill-scale first
+        # (2026-08-19 user request).
+        vf = manual_vf
+    else:
+        crop = _crop_filter(input_path, vertical_focus)
+        vf = (
+            f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,"
+            f"{crop},setsar=1"
+        )
     af = _audio_edge_fade_filter(input_path, start, duration)
     audio_present = has_audio_stream(input_path)
 
