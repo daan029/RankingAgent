@@ -178,13 +178,25 @@ def _draw_sidebar(draw: ImageDraw.ImageDraw, ranked_clips: list[dict], revealed_
     by_rank = sorted(ranked_clips, key=lambda c: c["rank"])
     for i, clip in enumerate(by_rank):
         y = start_y + i * row_height
-        number_color = BRAND_RED if clip["rank"] == 1 else WHITE
-        _draw_outlined_text(draw, (x_number, y), f"{clip['rank']}.", number_font, number_color, outline_width=5)
+        # rank 0 is the reserved sentinel for an extra "BONUS" clip tacked on
+        # above the #1 climax (2026-08-20 user request) — every real ranked
+        # clip is rank >= 1, so this never collides with normal themes.
+        if clip["rank"] == 0:
+            label, number_color = "BONUS", WHITE
+        else:
+            label, number_color = f"{clip['rank']}.", (BRAND_RED if clip["rank"] == 1 else WHITE)
+        _draw_outlined_text(draw, (x_number, y), label, number_font, number_color, outline_width=5)
 
         if clip["reveal_index"] < revealed_count:
             reaction = (clip.get("reaction") or "").strip()
             if reaction:
-                _draw_mixed_text(draw, (x_number + 90, y + 8), reaction, reaction_font, WHITE, outline_width=4)
+                # Reserve exactly as much space as the label actually needs
+                # (min 90px, the old fixed offset — fine for "1."-"5.") so a
+                # wider label like "BONUS" doesn't collide with the reaction
+                # text next to it.
+                label_w = draw.textlength(label, font=number_font)
+                reaction_x = x_number + max(90, label_w + 20)
+                _draw_mixed_text(draw, (reaction_x, y + 8), reaction, reaction_font, WHITE, outline_width=4)
 
 
 SUBSCRIBE_CTA_TEXT = "SUBSCRIBE to see our next video!"

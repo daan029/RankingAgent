@@ -148,6 +148,60 @@ themes:
       The 5 worst tackles this week! Clips via Reddit, all credit to the
       original creators (see below).
 
+  - name: worst_gym_fails
+    on_screen_label: "Worst Gym Fails"
+    # Site-wide search as the PRIMARY source (see [[theme-sourcing-and-fallback]]
+    # — new themes default to search_queries, not a name-guessed subreddit
+    # list). `subreddits` below is kept only as the discover/discover-manual
+    # fallback.
+    search_queries:
+      - "gym fail"
+      - "gym fail compilation"
+      - "worst form gym"
+      - "gym fail caught on camera"
+      - "workout fail"
+      - "deadlift fail"
+      - "leg day fail"
+      - "gym cringe"
+    subreddits:
+      - gymfails
+      - formcheck
+      - Whatcouldgowrong
+    min_score: 300
+    time_filter: year
+    clip_count: 5
+    title_template: "TOP 5 WORST GYM FAILS 🏋️ #{episode} | #Shorts"
+    # No credits block — see [[copyright-risk-stance]], user handles
+    # crediting himself, not the pipeline.
+    description_template: >
+      The 5 worst gym fails caught on camera! #Shorts #gym #gymfail
+
+  - name: worst_diy_fails
+    on_screen_label: "Worst DIY Fails"
+    # Site-wide search as the PRIMARY source (see [[theme-sourcing-and-fallback]]
+    # — new themes default to search_queries, not a name-guessed subreddit
+    # list). `subreddits` below is kept only as the discover/discover-manual
+    # fallback. Kept to 4 queries (not 8) — worst_gym_fails hit a Reddit 429
+    # rate-limit storm after widening to 8 queries in one run (2026-08-20),
+    # see [[video-pipeline-gotchas]]; start narrow and widen one query at a
+    # time only if a real run comes up short.
+    search_queries:
+      - "diy fail"
+      - "diy fail compilation"
+      - "home improvement fail"
+      - "renovation fail"
+    subreddits:
+      - DIYfails
+      - Whatcouldgowrong
+    min_score: 300
+    time_filter: year
+    clip_count: 5
+    title_template: "TOP 5 WORST DIY FAILS 🔨 #{episode} | #Shorts"
+    # No credits block — see [[copyright-risk-stance]], user handles
+    # crediting himself, not the pipeline.
+    description_template: >
+      The 5 worst DIY fails caught on camera! #Shorts #diy #diyfail
+
   - name: hero_moments
     on_screen_label: "Hero Moments"
     # Site-wide search as the PRIMARY source (2026-08-19 user correction —
