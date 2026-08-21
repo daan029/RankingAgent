@@ -59,6 +59,12 @@ class Theme:
     # a cheerful music bed underneath reads as tonally wrong instead
     # (2026-08-19 user feedback on `hero_moments`).
     force_opening_music: bool = True
+    # True adds a quiet music bed under the climax (last-revealed, #1)
+    # segment regardless of has_audio_stream — a music swell under the
+    # reveal of the best clip is a common short-form beat, requested
+    # per-theme the same way force_opening_music is (2026-08-21 user
+    # request for `best_animal_rescues`).
+    force_closing_music: bool = False
     # Per-theme override for RssDiscoverySource's max_candidates_per_search
     # (default 100, a safety cap not a normal target) — total candidates
     # checked per query before giving up on it regardless of yield.
@@ -125,6 +131,7 @@ def load_themes() -> dict[str, Theme]:
             max_raw_clip_seconds=entry.get("max_raw_clip_seconds"),
             max_highlight_seconds=entry.get("max_highlight_seconds"),
             force_opening_music=entry.get("force_opening_music", True),
+            force_closing_music=entry.get("force_closing_music", False),
             max_search_candidates=entry.get("max_search_candidates"),
             search_pages=entry.get("search_pages", 6),
             search_exact_phrase=entry.get("search_exact_phrase", True),

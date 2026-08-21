@@ -131,6 +131,41 @@ def upload_video(
     return video_id
 
 
+def check_copyright_claim(video_id: str) -> dict:
+    """Check a just-uploaded (still private/scheduled) video for signs of a
+    live Content ID claim, so it can be caught and fixed BEFORE `publishAt`
+    flips it public — see the copyright-claim-emergency-swap memory: a
+    claimed video shows `contentDetails.regionRestriction.blocked` as a huge
+    list (near-worldwide) while `status.privacyStatus` is still 'private'.
+    There's no public API for Content ID claims directly (that's a
+    partner-only Content ID API, not the Data API v3 key this project
+    uses) — this region-block side effect is the best signal available to a
+    regular uploader. Content ID matching isn't instant, so call this a few
+    minutes after upload, not immediately.
+
+    Returns `found=False` if `videos().list` returns zero items — itself a
+    bad sign, since a fully-removed/rejected video (seen twice in practice:
+    a Bensound track and a TikTok clip's background song both got the video
+    taken down outright, not just region-blocked) also shows up this way."""
+    creds = get_credentials()
+    youtube = build("youtube", "v3", credentials=creds)
+    resp = youtube.videos().list(part="status,contentDetails", id=video_id).execute()
+    items = resp.get("items", [])
+    if not items:
+        return {"found": False, "privacy_status": None, "blocked_region_count": 0, "likely_claimed": True}
+
+    item = items[0]
+    blocked = item.get("contentDetails", {}).get("regionRestriction", {}).get("blocked", [])
+    return {
+        "found": True,
+        "privacy_status": item.get("status", {}).get("privacyStatus"),
+        "blocked_region_count": len(blocked),
+        # A handful of licensing-driven regional blocks can be legitimate;
+        # a claim blocks essentially every country at once.
+        "likely_claimed": len(blocked) > 50,
+    }
+
+
 def update_video_status(youtube, video_id: str, **changes) -> dict:
     """videos().update() replaces the whole status object, so read the
     current one first and merge `changes` on top — never send a partial

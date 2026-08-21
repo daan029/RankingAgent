@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 
 from rankingagent.pipeline import (
+    check_video_copyright,
     discover_and_download,
     discover_from_urls,
     discover_via_rss,
@@ -118,6 +119,19 @@ def main() -> None:
              "to public at this time.",
     )
 
+    check_copyright_parser = subparsers.add_parser(
+        "check-copyright",
+        help="Check a just-uploaded (still private/scheduled) video for signs of a Content ID "
+             "claim before it goes public — prints JSON. Not a guarantee: Content ID matching "
+             "isn't instant and there's no public API for claims directly, only the region-block "
+             "side effect this relies on. Run a few minutes after upload, well before publish-at.",
+    )
+    check_copyright_parser.add_argument("--video-id", required=True, help="YouTube video id (from the upload/history output)")
+    check_copyright_parser.add_argument(
+        "--wait-seconds", type=int, default=0,
+        help="Sleep this long before checking, to give Content ID matching time to run",
+    )
+
     history_parser = subparsers.add_parser(
         "history", help="Previously published videos for a theme; prints JSON"
     )
@@ -171,6 +185,9 @@ def main() -> None:
             publish_at=args.publish_at,
         )
         print(f"https://youtube.com/watch?v={video_id}")
+    elif args.command == "check-copyright":
+        result = check_video_copyright(args.video_id, wait_seconds=args.wait_seconds)
+        print(json.dumps(result, indent=2))
     elif args.command == "history":
         history = get_theme_history(args.theme)
         print(json.dumps(history, indent=2, default=str))

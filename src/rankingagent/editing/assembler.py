@@ -21,6 +21,7 @@ def render_video(
     clip_manual_vf: dict[str, str] | None = None,
     clip_captions: dict[str, str] | None = None,
     force_opening_music: bool = True,
+    force_closing_music: bool = False,
 ) -> Path:
     """Build the full ranking video: normalize + overlay each clip in reveal
     order (sidebar accumulates revealed reactions as it goes, #1/climax
@@ -66,10 +67,15 @@ def render_video(
         # technically isn't (YouTube Shorts autoplay-mute catches them before
         # they've tapped to unmute) — force a quiet music bed under clip 0
         # regardless of has_audio_stream, so the open never reads as silent.
-        # Themes can opt out via force_opening_music=False.
+        # Themes can opt out via force_opening_music=False. Themes can also
+        # opt in to the same treatment under the climax segment via
+        # force_closing_music=True.
+        is_opening = idx == 0
+        is_closing = idx == len(ordered) - 1
         normalize_clip(
             Path(clip["local_path"]), normalized, duration=duration, start=start,
-            force_music_bed=(idx == 0 and force_opening_music), vertical_focus=vertical_focus,
+            force_music_bed=(is_opening and force_opening_music) or (is_closing and force_closing_music),
+            vertical_focus=vertical_focus,
             manual_vf=clip_manual_vf.get(clip["id"]),
         )
 

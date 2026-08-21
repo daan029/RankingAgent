@@ -29,7 +29,7 @@ from rankingagent.editing.assembler import render_video
 from rankingagent.editing.clip_processor import extract_preview_frames, get_duration, has_audio_stream
 from rankingagent.editing.highlight import find_highlight_window
 from rankingagent.ranking.scorer import MAX_RAW_CLIP_SECONDS, select_and_rank
-from rankingagent.upload.youtube import upload_video
+from rankingagent.upload.youtube import check_copyright_claim, upload_video
 
 logger = logging.getLogger(__name__)
 
@@ -356,6 +356,7 @@ def render_video_for_theme(
         title_text, ranked_clips, reactions, work_dir, output_path,
         clip_starts=clip_starts, clip_durations=clip_durations, clip_vertical_focus=clip_vertical_focus,
         clip_captions=clip_captions, force_opening_music=theme.force_opening_music,
+        force_closing_music=theme.force_closing_music,
     )
     logger.info("Rendered video for theme '%s' at %s", theme.name, output_path)
 
@@ -421,6 +422,16 @@ def upload_rendered_video(
 
     logger.info("Published video for theme '%s': https://youtube.com/watch?v=%s", theme.name, video_id)
     return video_id
+
+
+def check_video_copyright(video_id: str, wait_seconds: int = 0) -> dict:
+    """Thin wrapper around upload.youtube.check_copyright_claim — see that
+    docstring for what this can and can't detect. `wait_seconds` gives
+    YouTube's automated Content ID matching time to run before checking
+    (it isn't instant); pass 0 to check immediately."""
+    if wait_seconds:
+        time.sleep(wait_seconds)
+    return check_copyright_claim(video_id)
 
 
 def get_theme_history(theme_name: str) -> list[dict]:

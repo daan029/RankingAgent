@@ -240,3 +240,87 @@ themes:
     description_template: >
       The 5 most heroic rescue moments caught on camera! #Shorts #hero
       #rescue
+
+  - name: best_animal_rescues
+    on_screen_label: "Animal Rescues"
+    # Site-wide search as the PRIMARY source (see [[theme-sourcing-and-fallback]]
+    # — new themes default to search_queries, not a name-guessed subreddit
+    # list). `subreddits` below is kept only as the discover/discover-manual
+    # fallback. Kept to 4 queries, not 8 — worst_gym_fails hit a Reddit 429
+    # rate-limit storm after widening too far in one run (2026-08-20), see
+    # [[video-pipeline-gotchas]]; start narrow and widen one query at a time
+    # only if a real run comes up short.
+    search_queries:
+      - "animal rescue caught on camera"
+      - "rescued the dog"
+      - "saved the cat"
+      - "wildlife rescue"
+    subreddits:
+      - AnimalsBeingBros
+      - aww
+    # Genuine animal-rescue footage is a low-frequency event, same reasoning
+    # as hero_moments — widen the window instead of restricting to this
+    # week's top posts only.
+    time_filter: year
+    min_score: 500
+    clip_count: 5
+    # Same reasoning as hero_moments: a rescue needs wind-up before the
+    # payoff, and a rescue's own ambient sound fits better than a forced
+    # comedic music bed — revisit both after the first real render if it
+    # doesn't hold up here.
+    max_highlight_seconds: 25
+    force_opening_music: false
+    # A music swell under the climax reveal (2026-08-21 user request) — the
+    # opposite call from force_opening_music above, but they're independent:
+    # the opener's own ambient sound carries the moment, the climax gets a
+    # deliberate music beat since it's the #1 payoff.
+    force_closing_music: true
+    title_template: "TOP 5 BEST ANIMAL RESCUES 🐾 #{episode} | #Shorts"
+    # No credits block — see [[copyright-risk-stance]], user handles
+    # crediting himself, not the pipeline.
+    description_template: >
+      The 5 most heartwarming animal rescues caught on camera! #Shorts
+      #animalrescue #rescue
+
+  - name: soldier_homecomings
+    on_screen_label: "Soldier Homecomings"
+    # Site-wide search as the PRIMARY source (see [[theme-sourcing-and-fallback]]
+    # — new themes default to search_queries, not a name-guessed subreddit
+    # list). `subreddits` below is kept only as the discover/discover-manual
+    # fallback. Kept to 4 queries, not 8 — see [[video-pipeline-gotchas]]
+    # (429 storm from too many search_queries in one run); start narrow and
+    # widen one query at a time only if a real run comes up short.
+    search_queries:
+      - "soldier surprise homecoming"
+      - "military homecoming surprise"
+      - "soldier surprises family"
+      - "soldier comes home surprise"
+    subreddits:
+      - MadeMeSmile
+      - HumansBeingBros
+    # Same reasoning as hero_moments/best_animal_rescues: a genuine soldier
+    # homecoming surprise is a low-frequency event — widen the window
+    # instead of restricting to this week's top posts only.
+    time_filter: year
+    min_score: 500
+    clip_count: 5
+    # Same reasoning as hero_moments/best_animal_rescues: the surprise needs
+    # wind-up (family waiting, not knowing yet) before the reveal, and the
+    # clip's own reactions (crying, screaming) carry the moment better than
+    # a forced music bed would — revisit after the first real render if it
+    # doesn't hold up here.
+    max_highlight_seconds: 25
+    force_opening_music: false
+    # Raised from the 60s site default (2026-08-21 user request) — one
+    # source clip for this theme runs 135s raw (a slow-build surprise with
+    # a long lead-in), and the user explicitly asked to keep it in rather
+    # than let the raw-duration cap auto-reject it, just trim it carefully
+    # at render time (see max_highlight_seconds above — still capped at 25s
+    # for the final highlight window, this only affects raw-clip eligibility).
+    max_raw_clip_seconds: 150
+    title_template: "TOP 5 SOLDIER HOMECOMING SURPRISES 🎖️ #{episode} | #Shorts"
+    # No credits block — see [[copyright-risk-stance]], user handles
+    # crediting himself, not the pipeline.
+    description_template: >
+      The 5 most emotional soldier homecoming surprises! #Shorts #military
+      #homecoming
